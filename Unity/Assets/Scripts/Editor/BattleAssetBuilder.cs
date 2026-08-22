@@ -38,9 +38,10 @@ namespace Game.EditorTools
         /// Mana Spring (Support's 4th skillMove, restoresMana). 5 = M13's 3 potion
         /// assets (Battle/Potions/) and status effects on 5 existing Skill Moves. 6 =
         /// impactFrames now authored in KnownGoodImpactFrames instead of read from the
-        /// manifest's unreliable impact_frames field.
+        /// manifest's unreliable impact_frames field. 7 = M14's map-2-only enemy roster
+        /// (Rotfang/Deadeye/Hexweaver).
         /// </summary>
-        public const int ContentVersion = 6;
+        public const int ContentVersion = 7;
 
         /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
         /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
@@ -190,6 +191,17 @@ namespace Game.EditorTools
             };
             var standardSkillOverride = new Dictionary<string, SkillDefinition> { ["Support"] = healerBasicAttack };
 
+            // Map 2's distinct enemy roster (M14) -- Rotfang/Deadeye/Hexweaver, reusing
+            // Thorne/Reed/Vesper's already-imported art+clips (no new art generated, per
+            // the project owner's "worry about assets later" direction) but hand-authored
+            // stats and a genuinely different kit each, built below in
+            // BuildMap2EnemySkills/BuildMap2Enemies once characterDefs exists to borrow
+            // art from. Existed to give the M13 status-effect system enemies that
+            // actually use it -- Map 1's Husk/Warden/Stinger are flat player reskins with
+            // no offensive Skill Moves an AI would ever ordinarily reach for (see
+            // BattleController.ChooseAutoSkill's new offensive-move branch).
+            var map2Skills = BuildMap2EnemySkills(meleePattern, rangedPattern, supportPattern);
+
             var characterDefs = new Dictionary<string, CharacterDefinition>();
             foreach (var unitId in unitIds)
             {
@@ -204,13 +216,27 @@ namespace Game.EditorTools
                 characterDefs[unitId] = charDef;
             }
 
+            var map2Enemies = BuildMap2Enemies(characterDefs, map2Skills);
+
             var (fxSheet, fxRects) = LoadFxSheet();
             var manifestBackground = LoadSprite(backgroundAsset, unityRelRoot);
             // Explicit == null, not ??: Unity's overloaded equality is what detects a
             // destroyed/unassigned Object, and ?? bypasses it (the same trap that left
             // BattleBootstrap silently without a Camera -- see PROJECT-README.md M10).
-            BuildMap(1, characterDefs, tier, OrFallback(LoadBackgroundSprite("bg_battle1"), manifestBackground), fxSheet, fxRects);
-            BuildMap(2, characterDefs, tier, OrFallback(LoadBackgroundSprite("bg_battle2"), manifestBackground), fxSheet, fxRects);
+            var map1Placements = new List<EnemyPlacement>
+            {
+                new() { character = characterDefs["enemy_melee"], tier = tier, position = new Vector2Int(0, 3), level = 1 },
+                new() { character = characterDefs["enemy_support"], tier = tier, position = new Vector2Int(0, 4), level = 1 },
+                new() { character = characterDefs["enemy_ranged"], tier = tier, position = new Vector2Int(0, 5), level = 1 },
+            };
+            var map2Placements = new List<EnemyPlacement>
+            {
+                new() { character = map2Enemies["enemy_rotfang"], tier = tier, position = new Vector2Int(0, 3), level = 1 },
+                new() { character = map2Enemies["enemy_hexweaver"], tier = tier, position = new Vector2Int(0, 4), level = 1 },
+                new() { character = map2Enemies["enemy_deadeye"], tier = tier, position = new Vector2Int(0, 5), level = 1 },
+            };
+            BuildMap(1, map1Placements, OrFallback(LoadBackgroundSprite("bg_battle1"), manifestBackground), fxSheet, fxRects);
+            BuildMap(2, map2Placements, OrFallback(LoadBackgroundSprite("bg_battle2"), manifestBackground), fxSheet, fxRects);
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -517,11 +543,116 @@ namespace Game.EditorTools
             return (sprite, rects);
         }
 
-        /// <summary>Builds one battle map. Both maps in this 2-map sequence reuse the
-        /// same 3 enemy archetypes/tier -- no second set of enemy art was provided, only
-        /// a different background per map (see BattleWorld.MapCount /
-        /// Tools/AssetImport/import_bench_and_maps.py).</summary>
-        static void BuildMap(int mapNumber, Dictionary<string, CharacterDefinition> characterDefs, TierDefinition tier,
+        /// <summary>Map 2's 3 enemy Skill Moves (M14) -- each pairs damage with the
+        /// status effect that gives that enemy its identity: Rotfang applies Poison,
+        /// Deadeye applies Attack Down, Hexweaver applies Defense Down (plus a plain Heal
+        /// so it can sustain its own side, same "healers can attack/support" pattern as
+        /// the player roster). Reuses the same 3 base patterns every archetype already
+        /// shares -- these enemies don't need new targeting shapes, just a new kit.
+        /// Numbers are arbitrary (project owner direction), not a tuned balance pass.</summary>
+        static Dictionary<string, SkillDefinition> BuildMap2EnemySkills(
+            SkillPattern meleePattern, SkillPattern rangedPattern, SkillPattern supportPattern)
+        {
+            var venomStrike = BuildSkillMove("Skill_EnemyVenomStrike", "Venom Strike",
+                meleePattern, power: 1.5f, usesMagic: false, targetsAllies: false, mpCost: 25,
+                inflictsStatus: StatusEffectType.Poison, statusMagnitude: 12f, statusDuration: 3);
+            var cripplingShot = BuildSkillMove("Skill_EnemyCripplingShot", "Crippling Shot",
+                rangedPattern, power: 1.4f, usesMagic: false, targetsAllies: false, mpCost: 25, isRanged: true,
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.25f, statusDuration: 2);
+            var hexweaverHeal = BuildSkillMove("Skill_EnemyHexweaverHeal", "Heal",
+                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 20);
+            var weaken = BuildSkillMove("Skill_EnemyWeaken", "Weaken",
+                supportPattern, power: 0.8f, usesMagic: true, targetsAllies: false, mpCost: 25,
+                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.25f, statusDuration: 2);
+
+            return new Dictionary<string, SkillDefinition>
+            {
+                ["venomStrike"] = venomStrike,
+                ["cripplingShot"] = cripplingShot,
+                ["hexweaverHeal"] = hexweaverHeal,
+                ["weaken"] = weaken,
+            };
+        }
+
+        /// <summary>Map 2's 3 enemies (M14), reusing Thorne/Reed/Vesper's already-built
+        /// art+clips (BuildCharacter already loaded those into characterDefs for the
+        /// bench) rather than any new generated assets -- explicitly deferred by the
+        /// project owner. Hand-authored stats (a step up from map 1's Husk/Warden/
+        /// Stinger, which reuse the player archetypes' own numbers verbatim) instead of
+        /// going through ArchetypeSpec, since these aren't archetype reskins.</summary>
+        static Dictionary<string, CharacterDefinition> BuildMap2Enemies(
+            Dictionary<string, CharacterDefinition> characterDefs, Dictionary<string, SkillDefinition> skills)
+        {
+            var rotfangBa = BuildSkillMove("Skill_EnemyRotfangBasic", "Bite",
+                characterDefs["enemy_melee"].standardSkill.pattern, power: 1.2f, usesMagic: false, targetsAllies: false, mpCost: 0);
+            var deadeyeBa = BuildSkillMove("Skill_EnemyDeadeyeBasic", "Snipe Shot",
+                characterDefs["enemy_ranged"].standardSkill.pattern, power: 1.0f, usesMagic: false, targetsAllies: false, mpCost: 0, isRanged: true);
+            var hexweaverBa = BuildSkillMove("Skill_EnemyHexweaverBasic", "Hex Bolt",
+                characterDefs["enemy_support"].standardSkill.pattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0);
+
+            var rotfang = BuildCustomEnemy("enemy_rotfang", "Rotfang", ClassType.Warrior,
+                new StatBlock { hp = 150, attack = 26, defense = 16, magic = 4, resistance = 8, speed = 8 },
+                rotfangBa, new List<SkillDefinition> { skills["venomStrike"] },
+                characterDefs["player_bench_melee"]);
+
+            var deadeye = BuildCustomEnemy("enemy_deadeye", "Deadeye", ClassType.Ranger,
+                new StatBlock { hp = 100, attack = 24, defense = 8, magic = 8, resistance = 8, speed = 13 },
+                deadeyeBa, new List<SkillDefinition> { skills["cripplingShot"] },
+                characterDefs["player_bench_ranged"]);
+
+            var hexweaver = BuildCustomEnemy("enemy_hexweaver", "Hexweaver", ClassType.Healer,
+                new StatBlock { hp = 105, attack = 10, defense = 10, magic = 22, resistance = 14, speed = 10 },
+                hexweaverBa, new List<SkillDefinition> { skills["hexweaverHeal"], skills["weaken"] },
+                characterDefs["player_bench_support"]);
+
+            return new Dictionary<string, CharacterDefinition>
+            {
+                ["enemy_rotfang"] = rotfang,
+                ["enemy_deadeye"] = deadeye,
+                ["enemy_hexweaver"] = hexweaver,
+            };
+        }
+
+        /// <summary>Like BuildCharacter, but for a unit that isn't one of the 3 shared
+        /// archetypes and has no manifest sprite/portrait/clip entries of its own --
+        /// borrows every art reference (battleSprite/portrait/pixelSprite32/clips)
+        /// directly from an already-built CharacterDefinition instead. No tier parameter
+        /// -- tier isn't stored on CharacterDefinition, it's applied per-EnemyPlacement
+        /// (see BuildMap2Enemies' callers).</summary>
+        static CharacterDefinition BuildCustomEnemy(string unitId, string displayName, ClassType classType,
+            StatBlock baseStats, SkillDefinition standardSkill, List<SkillDefinition> skillMoves,
+            CharacterDefinition artSource)
+        {
+            var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
+            def.characterId = unitId;
+            def.displayName = displayName;
+            def.classType = classType;
+            def.element = ElementType.Neutral;
+            def.age = Age.Modern;
+            def.baseStats = baseStats;
+            def.maxMp = 100;
+            def.movePoints = 4;
+            def.jump = 1;
+            def.costLateral = 2;
+            def.costForward = 1;
+            def.costPerHeightLevel = 1;
+            def.standardSkill = standardSkill;
+            def.skillMoves = new List<SkillDefinition>(skillMoves);
+            def.growthPerLevel = 0.06f;
+            def.clips = artSource.clips;
+            def.portrait = artSource.portrait;
+            def.pixelSprite32 = artSource.pixelSprite32;
+            def.battleSprite = artSource.battleSprite;
+            EditorUtility.SetDirty(def);
+            return def;
+        }
+
+        /// <summary>Builds one battle map from an explicit enemy placement list --
+        /// caller's choice, not derived here. Through M13 both maps reused the same 3
+        /// enemy archetypes; M14 gave map 2 its own distinct roster (Rotfang/Deadeye/
+        /// Hexweaver, see BuildMap2Enemies) while map 1 keeps Husk/Warden/Stinger, so
+        /// this method itself stopped caring which map it's building for.</summary>
+        static void BuildMap(int mapNumber, List<EnemyPlacement> enemies,
             Sprite backgroundSprite, Sprite fxSheet, List<Vector4> fxRects)
         {
             // Side-view formation: a single lane, column = horizontal rank (see archetypes
@@ -544,12 +675,7 @@ namespace Game.EditorTools
                 new(0, 0), new(0, 1), new(0, 2),
             };
 
-            map.enemies = new List<EnemyPlacement>
-            {
-                new() { character = characterDefs["enemy_melee"], tier = tier, position = new Vector2Int(0, 3), level = 1 },
-                new() { character = characterDefs["enemy_support"], tier = tier, position = new Vector2Int(0, 4), level = 1 },
-                new() { character = characterDefs["enemy_ranged"], tier = tier, position = new Vector2Int(0, 5), level = 1 },
-            };
+            map.enemies = enemies;
 
             EditorUtility.SetDirty(map);
         }

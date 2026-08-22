@@ -357,6 +357,55 @@ via automation.
     writes the potion assets + status-effect fields to disk, same pattern as every
     prior content addition this project has made). `BattleAssetBuilder.ContentVersion`
     bumped to 5.
+11. **`impactFrames` re-fix, map-2-only enemy roster, offensive-Skill-Move AI -- M14.**
+    - **`impactFrames` regressed and got a real fix.** The M12 hand-fix reverted to the
+      exact same corrupted values the very next time the project owner rebuilt (for
+      M13's content) -- confirming `BuildClipSet` overwrites `impactFrames` from the
+      manifest's `impact_frames` field on every `Build()` run, and that field
+      deserializes to the same wrong numbers deterministically, so a hand-edit alone
+      could never survive. Root cause still unconfirmed. Fixed by no longer trusting
+      that field at all: `BattleAssetBuilder.KnownGoodImpactFrames` authors the 3
+      known-correct values directly in C#. `ContentVersion` bumped to 6.
+    - **Map 2 gets its own enemy roster.** Requested per the project owner ("more enemy
+      types") specifically so the M13 status-effect system has something real to
+      exercise it -- map 1's Husk/Warden/Stinger are flat player reskins with no
+      offensive Skill Move an AI would ever reach for, so Poison/Attack Down/Defense
+      Down had nothing to prove they worked beyond unit tests. **Rotfang** (melee,
+      reuses Thorne's art, hp150/atk26/def16/spd8 -- bulkier than Husk) inflicts
+      **Poison** via Venom Strike. **Deadeye** (ranged, reuses Reed's art,
+      hp100/atk24/spd13 -- a glass cannon, faster than Warden) inflicts **Attack Down**
+      via Crippling Shot. **Hexweaver** (support, reuses Vesper's art,
+      hp105/mag22/res14 -- bulkier caster than Stinger) inflicts **Defense Down** via
+      Weaken, and can still Heal its own side. All 3 reuse Thorne/Reed/Vesper's
+      already-imported art+clips (`BuildCustomEnemy`, new -- borrows
+      battleSprite/portrait/pixelSprite32/clips directly from an existing
+      `CharacterDefinition` instead of going through the manifest-sprite path) --
+      **no new art generated**, per the project owner's "worry about assets later"
+      direction. `BattleAssetBuilder.BuildMap` no longer hardcodes which characters go
+      in a map; it takes an explicit `List<EnemyPlacement>` from its caller now, so map
+      1 and map 2 can genuinely differ. `ContentVersion` bumped to 7.
+    - **The AI needed to actually use these kits, or they'd be dead content again.**
+      `BattleController.ChooseAutoSkill` previously only ever chose BA or the one
+      heal carve-out -- "Auto mode never reaches for the other skillMoves entries...
+      those stay a manual-only tactical choice," per M9's own doc comment. That meant
+      *any* offensive Skill Move (including the M13 status-inflicting retrofits on
+      Power Strike/Snipe/Barrage, and now Rotfang/Deadeye/Hexweaver's whole kit) was
+      unreachable by any AI-driven turn -- every enemy turn, and every player turn in
+      auto mode. Added `OffensiveSkillMoveChance = 0.35f`: a 35% chance per turn to
+      reach for an affordable, valid non-heal Skill Move instead of BA. Applies
+      symmetrically to both factions, so auto-battling player units now also
+      occasionally use Power Strike/Snipe/Barrage instead of only ever basic-attacking
+      -- an emergent improvement beyond the original ask, not just an enemy-specific
+      hack. Arbitrary chance, not tuned.
+    - New tests: `Map2_FieldsADifferentRosterThanMap1`, `Map2Enemies_HaveAFreeBaAndAnOffensiveStatusSkill`,
+      `Hexweaver_CanHealItsOwnSide` (all in `BattleAssetContentTests.cs`). The
+      `OffensiveSkillMoveChance` AI branch itself isn't unit-tested -- it lives on
+      `BattleController`, a `MonoBehaviour` that needs a live scene, matching this
+      project's established "orchestration verified by interactive play" split.
+      **Status-effect verification explicitly deferred by the project owner** until
+      these new enemies can be played against -- "we can't really check the status
+      effect step but we can check that at another time after we get more enemy
+      types."
 
 ## Roster
 
@@ -365,14 +414,27 @@ via automation.
 | **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal + Regen, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit + Defense Down, 35MP) |
 | **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit + Attack Down, 30MP) / Barrage (full-team AoE + Stun, 45MP) |
 | **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal + Regen, 30MP) / Mana Spring (restore ally MP, 15MP) |
-| **Husk** | Melee | Enemy | same as Kestrel's archetype | same as Kestrel's archetype |
-| **Warden** | Ranged | Enemy | same as Sable's archetype | same as Sable's archetype |
-| **Stinger** | Support | Enemy | same as Linnet's archetype | same as Linnet's archetype |
+| **Husk** | Melee | Enemy (map 1) | same as Kestrel's archetype | same as Kestrel's archetype |
+| **Warden** | Ranged | Enemy (map 1) | same as Sable's archetype | same as Sable's archetype |
+| **Stinger** | Support | Enemy (map 1) | same as Linnet's archetype | same as Linnet's archetype |
+| **Rotfang** | Melee | Enemy (map 2 only) | Bite, 1 col | Venom Strike (heavy hit + Poison, 25MP) |
+| **Deadeye** | Ranged | Enemy (map 2 only) | Snipe Shot, any col | Crippling Shot (heavy hit + Attack Down, 25MP) |
+| **Hexweaver** | Support | Enemy (map 2 only) | Hex Bolt (low power attack) | Heal (20MP) / Weaken (Defense Down, 25MP) |
 
 **Bench reserves (player)** — sub in for any active player unit via the manual-mode Sub
 action, same archetype stats/BA/Skill Moves as their active counterpart, distinct art:
 **Thorne** (Melee, reskin of Kestrel's archetype), **Reed** (Ranged, reskin of Sable's),
 **Vesper** (Support, reskin of Linnet's).
+
+**Rotfang/Deadeye/Hexweaver (M14) reuse Thorne/Reed/Vesper's art+clips directly** --
+`BattleAssetBuilder.BuildCustomEnemy` borrows the Sprite/ClipSet references from the
+already-built bench `CharacterDefinition`s rather than expecting new generated PNGs,
+per the project owner's "worry about assets later" direction. Their stats/kits are
+hand-authored, not archetype reskins like Husk/Warden/Stinger -- each is a genuine step
+up (bulkier melee, faster ranged glass cannon, bulkier caster) and each exists
+specifically to give the M13 status-effect system something an AI actually uses (see
+"What changed" item 11) -- auto mode previously never reached for a non-heal Skill
+Move at all.
 
 All 10 non-BA skills, plus the relocated Heal and M12's Mana Spring, live in
 `CharacterDefinition.skillMoves`; `standardSkill` is always BA. 5 of the 10 also carry
@@ -410,6 +472,7 @@ costs the turn.
 | M11 | Skill Moves built into the assets, content guard + asset-level tests, SM tap, duplicate-label fix | *(not yet tagged)* |
 | M12 | MP economy (BA trickle, between-map recovery, Mana Spring), FMV chroma-key components, code-based Skill Move tests | *(not yet tagged)* |
 | M13 | Battle potions (3 slots, F-SSS rank), standard JRPG status effects, per-turn MP regen, Android-first platform priority | *(not yet tagged)* |
+| M14 | `impactFrames` re-fix (authored in C#), map-2-only enemy roster (Rotfang/Deadeye/Hexweaver), offensive-Skill-Move AI | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -601,33 +664,46 @@ potion slots).
   more `-runTests` pass once it's closed to confirm the code fix actually produces
   correct output on a fresh `Build()`, not just that the hand-patched files
   (already reapplied) look right by inspection.
+- **M14's map-2 roster (Rotfang/Deadeye/Hexweaver) and the new `OffensiveSkillMoveChance`
+  AI branch are code-complete but not yet confirmed in a live battle.** Explicitly
+  deferred by the project owner: "we can't really check the status effect step but we
+  can check that at another time after we get more enemy types" -- these enemies are
+  exactly that "more enemy types." Next interactive session: fight map 2, confirm
+  Rotfang actually Poisons someone, Deadeye actually Attack-Downs someone, Hexweaver
+  actually Weakens someone and heals its own side, and that Kestrel/Sable/etc.
+  occasionally reach for their offensive Skill Moves in auto mode too.
 
 ## Natural next steps, roughly in priority order
 
-1. **On-device Android verification** — see "Known gaps." Now the top of the list,
-   not a someday item: the project owner's explicit priority is Android first, Windows
+1. **On-device Android verification** — see "Known gaps." Top of the list, not a
+   someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Rebuild in the interactive Editor and re-run the tests.** M13's content (3 potion
-   assets, 5 status-effect retrofits) needs the same `BattleContentGuard` auto-rebuild
-   every prior content addition has -- open the Editor once, then headless `-runTests`
-   should go 53/53 instead of 51/53.
-3. **Play the new M13 systems.** Nobody has watched a Stun actually skip a turn, a
-   Poison tick someone down, or used an Item in a live battle yet -- all verified by
-   code-based tests per the project owner's stated preference, none by interactive play.
+2. **Rebuild in the interactive Editor and re-run the tests.** M14's content (map-2
+   roster, `impactFrames` re-fix) needs the same `BattleContentGuard` auto-rebuild
+   every prior content addition has, plus a headless `-runTests` pass to confirm both
+   fixes actually hold on a fresh `Build()`.
+3. **Play map 2 and confirm the status-effect system for real.** This is the
+   project owner's own stated next checkpoint for it -- fight Rotfang/Deadeye/
+   Hexweaver, confirm Poison/Attack Down/Defense Down/Stun are all visibly doing
+   something, and that auto mode's units (both sides) sometimes reach for an
+   offensive Skill Move instead of only ever basic-attacking.
 4. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
    the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
    battle) because no economy system exists yet to source real starting inventory from.
 5. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations) -- explicitly deferred by the project owner until the foundation above
    is laid out further. The components are ready (M12) whenever this comes back up.
-6. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12's fix) --
-   currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold, not
-   synced to the clip's actual hit frame.
+6. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
+   fix) -- currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold,
+   not synced to the clip's actual hit frame.
 7. Consider extending the status-effect system if content wants to go beyond the 6
    types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
    core tick/apply/multiplier plumbing (M13) is general enough to add types to without
-   restructuring it.
-8. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+   restructuring it. `Poison` itself is still unused outside of Rotfang.
+8. More enemy variety beyond map 2's 3, if the project owner wants it -- the
+   `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
+   borrow art from an existing `CharacterDefinition` (no new art generation needed).
+9. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
    reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
    farm/town economy) are designed but not connected to this battle system yet —
    that's the actual "rest of the game," this slice only proves the battle screen works.

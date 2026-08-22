@@ -323,12 +323,23 @@ namespace Game.Battle
             foreach (var faction in DeadFactionsAmong(hitTargets)) yield return _visuals.ReflowFormation(World, faction);
         }
 
+        /// <summary>"Sometimes reach for an offensive Skill Move instead of BA" chance
+        /// (M14) -- without this, a Skill Move that inflicts a status effect was dead
+        /// content for any unit that never gets a manual-mode turn (every enemy, and
+        /// every player unit while in auto mode): ChooseAutoSkill only ever picked BA or
+        /// the one heal carve-out below. Added specifically so map 2's Rotfang/Deadeye/
+        /// Hexweaver (M14) actually use their Poison/Attack-Down/Defense-Down kits in a
+        /// real battle -- but it applies to every unit in auto mode, not just enemies,
+        /// so player units auto-battling now also occasionally use Power Strike/Snipe/
+        /// Barrage instead of only ever basic-attacking. Arbitrary, not tuned.</summary>
+        const float OffensiveSkillMoveChance = 0.35f;
+
         /// <summary>Auto-mode/enemy skill choice. Healer-archetype units heal (their
         /// mana-cost skillMoves entry with targetsAllies) when an ally is missing HP and
         /// they can afford it, otherwise fall back to BA -- keeps a healer from wasting
-        /// turns topping off a full-HP ally once nobody nearby needs it. Auto mode never
-        /// reaches for the other skillMoves entries (defensive/AoE) -- those stay a
-        /// manual-only tactical choice for now, matching Reposition/Sub.</summary>
+        /// turns topping off a full-HP ally once nobody nearby needs it. Beyond that,
+        /// OffensiveSkillMoveChance (M14) gives a chance per turn to reach for a
+        /// non-heal Skill Move instead of BA; Reposition/Sub remain manual-only.</summary>
         SkillDefinition ChooseAutoSkill(BattleUnit unit, out List<BattleUnit> targets)
         {
             var basic = unit.Definition.standardSkill;
@@ -356,6 +367,20 @@ namespace Game.Battle
                         targets = healTargets;
                         return healMove;
                     }
+                }
+            }
+
+            var offensiveMoves = unit.Definition.skillMoves
+                .Where(s => s != null && !s.targetsAllies && unit.CurrentMp >= EffectiveMpCost(s))
+                .ToList();
+            if (offensiveMoves.Count > 0 && UnityEngine.Random.value < OffensiveSkillMoveChance)
+            {
+                var chosen = offensiveMoves[UnityEngine.Random.Range(0, offensiveMoves.Count)];
+                var moveTargets = TargetResolver.GetValidTargets(unit, chosen, World.AllUnits);
+                if (moveTargets.Count > 0)
+                {
+                    targets = moveTargets;
+                    return chosen;
                 }
             }
 

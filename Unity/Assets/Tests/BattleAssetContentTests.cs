@@ -256,5 +256,68 @@ namespace Game.Tests
                 Assert.IsNotNull(map.backgroundSprite, $"Map {i} has no background sprite.");
             }
         }
+
+        /// <summary>M14: map 2 gets its own distinct enemy roster (Rotfang/Deadeye/
+        /// Hexweaver) instead of reusing map 1's Husk/Warden/Stinger -- this is the test
+        /// that would catch someone accidentally wiring the same characters into both
+        /// maps again.</summary>
+        [Test]
+        public void Map2_FieldsADifferentRosterThanMap1()
+        {
+            var map1 = Resources.Load<MapDefinition>("Battle/Maps/Map_BattleSlice1");
+            var map2 = Resources.Load<MapDefinition>("Battle/Maps/Map_BattleSlice2");
+
+            var map1Ids = map1.enemies.Select(e => e.character.characterId).OrderBy(id => id).ToList();
+            var map2Ids = map2.enemies.Select(e => e.character.characterId).OrderBy(id => id).ToList();
+
+            CollectionAssert.AreNotEqual(map1Ids, map2Ids, "map 2 should not field the exact same enemies as map 1.");
+            CollectionAssert.AreEquivalent(
+                new[] { "enemy_rotfang", "enemy_deadeye", "enemy_hexweaver" }, map2Ids,
+                $"map 2's roster is {string.Join(", ", map2Ids)}, expected Rotfang/Deadeye/Hexweaver.");
+        }
+
+        static readonly (string unitId, string displayName, StatusEffectType status)[] Map2Enemies =
+        {
+            ("enemy_rotfang", "Rotfang", StatusEffectType.Poison),
+            ("enemy_deadeye", "Deadeye", StatusEffectType.AttackDown),
+            ("enemy_hexweaver", "Hexweaver", StatusEffectType.DefenseDown),
+        };
+
+        /// <summary>Each map-2 enemy needs a free BA and at least one offensive Skill
+        /// Move carrying the status effect that's its whole reason for existing -- this
+        /// system was added (M13) specifically because map 1's Husk/Warden/Stinger are
+        /// flat player reskins with no offensive Skill Move an AI would ever reach for
+        /// (see BattleController.ChooseAutoSkill), so status effects had nothing to
+        /// exercise them in a real battle.</summary>
+        [Test]
+        public void Map2Enemies_HaveAFreeBaAndAnOffensiveStatusSkill()
+        {
+            foreach (var (unitId, displayName, status) in Map2Enemies)
+            {
+                var def = Load(unitId);
+                Assert.AreEqual(displayName, def.displayName);
+                Assert.IsNotNull(def.standardSkill, $"{unitId} has no BA.");
+                Assert.AreEqual(0, def.standardSkill.mpCost, $"{unitId}'s BA must be free.");
+                Assert.IsNotNull(def.battleSprite, $"{unitId} has no battle sprite -- art borrowing from the bench roster failed.");
+
+                var offensiveMove = def.skillMoves.FirstOrDefault(s => s != null && !s.targetsAllies && s.inflictsStatus == status);
+                Assert.IsNotNull(offensiveMove,
+                    $"{unitId} has no offensive Skill Move inflicting {status}. Has: "
+                    + string.Join(", ", def.skillMoves.Where(s => s != null).Select(s => $"{s.displayName}->{s.inflictsStatus}")));
+                Assert.Greater(offensiveMove.mpCost, 0, $"{unitId}'s '{offensiveMove.displayName}' should cost MP like every other Skill Move.");
+            }
+        }
+
+        /// <summary>Hexweaver is the one map-2 enemy with a heal alongside its debuff --
+        /// same "auto mode heals its side before attacking" carve-out the player's
+        /// support archetype gets (ChooseAutoSkill's healMove filter), so it needs a
+        /// real HP-healing, non-restoresMana ally-targeting move to trigger it.</summary>
+        [Test]
+        public void Hexweaver_CanHealItsOwnSide()
+        {
+            var def = Load("enemy_hexweaver");
+            Assert.IsTrue(def.skillMoves.Any(s => s != null && s.targetsAllies && !s.restoresMana),
+                "Hexweaver has no HP-healing Skill Move, so auto mode will never heal its allies.");
+        }
     }
 }

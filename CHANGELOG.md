@@ -4,12 +4,34 @@ Reverse-chronological history of the `feature/battle-slice` branch. For *current
 state (what's done, what's known-broken, what's next) see `PROJECT-README.md` instead
 — this file is a record of what shipped when, not a living status doc.
 
-## Unreleased — M9-M13 (2026-08-19)
+## Unreleased — M9-M14 (2026-08-19)
 
 Not yet tagged or cut as a release. Depth on the battle slice: a real roster bench,
 a per-unit skill system, the tooling to stop authored content from silently failing
-to ship, a first-pass MP economy plus FMV playback components, and now battle
-potions, standard JRPG status effects, and an explicit Android-first platform priority.
+to ship, a first-pass MP economy plus FMV playback components, battle potions,
+standard JRPG status effects, an explicit Android-first platform priority, and now a
+distinct map-2 enemy roster with the AI to actually use its kit.
+
+- **M14 — `impactFrames` re-fix, map-2 enemy roster, offensive-Skill-Move AI.** The
+  M12 `impactFrames` hand-fix regressed to the exact same corrupted values on the very
+  next interactive rebuild (M13) -- confirming `BuildClipSet` overwrites it from the
+  manifest's `impact_frames` field on every `Build()` run, and that field
+  deserializes to the same wrong numbers deterministically (root cause still
+  unconfirmed). Fixed for real by no longer trusting that field: the 3 known-correct
+  values are now authored directly in C# (`BattleAssetBuilder.KnownGoodImpactFrames`).
+  Separately, per the project owner's request for "more enemy types" (needed to give
+  M13's status-effect system something to prove itself against): map 2 now fields its
+  own roster -- Rotfang (Poison), Deadeye (Attack Down), Hexweaver (Defense Down, plus
+  Heal for its own side) -- reusing Thorne/Reed/Vesper's already-imported art+clips
+  rather than any new generated assets. `BattleAssetBuilder.BuildMap` no longer
+  hardcodes which characters go in a map; it takes an explicit enemy-placement list
+  now. Found and fixed a real gap while wiring this: `BattleController.ChooseAutoSkill`
+  never reached for anything but BA or the one heal carve-out, so *any* offensive
+  Skill Move -- including M13's status-inflicting retrofits -- was unreachable by any
+  AI-driven turn (every enemy, and every auto-mode player unit). Added a 35% per-turn
+  chance to reach for an affordable, valid offensive Skill Move instead, symmetric
+  across both factions. 3 new EditMode tests. Status-effect verification explicitly
+  deferred by the project owner until these new enemies are actually played against.
 
 - **M13 — Battle potions, status effects, per-turn MP regen, platform priority.**
   Direction from the project owner across five areas. **Potions:** a new
