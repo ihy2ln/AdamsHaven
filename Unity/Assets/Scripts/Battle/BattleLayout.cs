@@ -1,5 +1,4 @@
 using UnityEngine;
-using Game.Data;
 
 namespace Game.Battle
 {
@@ -31,11 +30,6 @@ namespace Game.Battle
         // the view at a typical widescreen aspect.
         public const float DockFrontOffset = 3.6f;
 
-        // Where an acting/targeted unit stands during its centre-stage cinematic beat
-        // (BattleVisuals.MoveToStage), on its own faction's side of centre -- close
-        // enough to read as "meeting in the middle" without the two sprites colliding.
-        public const float StageOffset = 2.0f;
-
         public const float GroundY = -2.1f;
 
         // Player columns 0(back)..2(front) cluster left of centre, front nearest centre.
@@ -47,8 +41,13 @@ namespace Game.Battle
 
         public static Vector3 UnitPosition(int column) => new(ColumnToWorldX(column), GroundY, 0f);
 
-        public static Vector3 StagePosition(Faction faction) =>
-            new(faction == Faction.Player ? -StageOffset : StageOffset, GroundY, 0f);
+        // True screen centre, regardless of faction or the acting unit's rank -- a
+        // shallow offset (the old StageOffset = 2.0, well short of centre) read as
+        // barely moving at all, especially for an already-frontline attacker, and didn't
+        // land as "meeting in the middle" (confirmed by the project owner watching it
+        // play out). BattleVisuals.MoveToStage moves only the acting unit here; the
+        // target stays on its own dock throughout.
+        public static Vector3 StagePosition() => new(0f, GroundY, 0f);
 
         public static void ApplyBattleCamera(Camera cam)
         {

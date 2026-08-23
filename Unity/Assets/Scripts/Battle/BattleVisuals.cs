@@ -129,12 +129,12 @@ namespace Game.Battle
 
         const float StageTweenSeconds = 0.25f;
 
-        /// <summary>Tweens only the acting unit from its dock onto the centre stage (its
-        /// own faction's side) for a turn's cinematic beat -- the target stays put on its
-        /// dock throughout. No-op for a unit with no view (e.g. missing/never-built).</summary>
+        /// <summary>Tweens only the acting unit from its dock to true screen centre for a
+        /// turn's cinematic beat -- the target stays put on its dock throughout. No-op
+        /// for a unit with no view (e.g. missing/never-built).</summary>
         public IEnumerator MoveToStage(BattleUnit actor, BattleUnit target)
         {
-            yield return TweenPair(actor, BattleLayout.StagePosition(actor.Faction),
+            yield return TweenPair(actor, BattleLayout.StagePosition(),
                 target, DockPosition(target));
         }
 
