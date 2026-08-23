@@ -1,0 +1,46 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 36b21e9231ada0748bac542cac023b1b, type: 3}
+  m_Name: Char_enemy_hexweaver
+  m_EditorClassIdentifier: Game.Data::Game.Data.CharacterDefinition
+  characterId: enemy_hexweaver
+  displayName: Hexweaver
+  classType: 4
+  element: 0
+  age: 3
+  bio: 
+  baseStats:
+    hp: 105
+    attack: 10
+    defense: 10
+    magic: 22
+    resistance: 14
+    speed: 10
+  movePoints: 4
+  jump: 1
+  costLateral: 2
+  costForward: 1
+  costPerHeightLevel: 1
+  maxMp: 100
+  standardSkill: {fileID: 11400000, guid: ecc7a3466f0dbf04fb19edae678b7195, type: 2}
+  skillMoves:
+  - {fileID: 11400000, guid: 754c4df36655cfa49b3ac00ec4ac00c4, type: 2}
+  - {fileID: 11400000, guid: e45a4eab53a08694a99aa8e7ea49626a, type: 2}
+  classSkillPool: []
+  elementSkillPool: []
+  growthPerLevel: 0.06
+  clips: {fileID: 11400000, guid: 5d784bd90d051ff40b1ed2c8f54fe1fc, type: 2}
+  portrait: {fileID: 0}
+  pixelSprite32: {fileID: 0}
+  battleSprite: {fileID: 21300000, guid: d20e933313487ce4a9cc8a3f6110e136, type: 3}
+  pixelSprite96: {fileID: 0}
+  personaPrompt: 

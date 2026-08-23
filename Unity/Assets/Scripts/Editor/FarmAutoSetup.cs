@@ -36,9 +36,9 @@ public static class FarmAutoSetup
         }
 
         // Ensure product name
-        PlayerSettings.productName = "AI.Game Farm";
+        PlayerSettings.productName = "Adams Haven";
         PlayerSettings.companyName = "AI.Game";
-        PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.aigame.farm");
+        PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.adamshaven.game");
         PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
     }
 }

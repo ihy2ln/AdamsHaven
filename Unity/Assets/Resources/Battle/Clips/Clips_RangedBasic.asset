@@ -15,8 +15,7 @@ MonoBehaviour:
   clips:
   - key: basicAttack
     clip: {fileID: 32900000, guid: 439643c53d90880429f20ca53e2df4b5, type: 3}
-    impactFrames:
-    - 22
+    impactFrames: 16000000
     frameRate: 24
     chromaKey: {r: 0, g: 1, b: 0, a: 1}
     chromaTolerance: 0.25

@@ -51,15 +51,15 @@ MonoBehaviour:
   - {x: 0, y: 1}
   - {x: 0, y: 2}
   enemies:
-  - character: {fileID: 11400000, guid: fd307a7047117a84b885aa279f5f3eea, type: 2}
+  - character: {fileID: 11400000, guid: 60a1e9a4c67cd4744abb8d7c81255399, type: 2}
     tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
     position: {x: 0, y: 3}
     level: 1
-  - character: {fileID: 11400000, guid: b638e8c9417c7ab49ba8a86a2240bf0f, type: 2}
+  - character: {fileID: 11400000, guid: 911839afddf1b1d4d9082b4a509be74b, type: 2}
     tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
     position: {x: 0, y: 4}
     level: 1
-  - character: {fileID: 11400000, guid: 4e43e445c3e3efd4aa7fb03cc89ffbfe, type: 2}
+  - character: {fileID: 11400000, guid: 08d6a15eabb2c19409e7ebdd0826cf77, type: 2}
     tier: {fileID: 11400000, guid: d0486d4b322eab04b96075a2cd111436, type: 2}
     position: {x: 0, y: 5}
     level: 1

@@ -23,9 +23,9 @@ namespace Game.EditorTools
         {
             BattleSceneBuilder.CreateBattleScene();
 
-            PlayerSettings.productName = "AI.Game";
+            PlayerSettings.productName = "Adams Haven";
             PlayerSettings.companyName = "AI.Game";
-            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.aigame.aigame");
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.adamshaven.game");
             PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
             PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);

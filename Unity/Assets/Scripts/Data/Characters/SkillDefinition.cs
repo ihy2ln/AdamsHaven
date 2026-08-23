@@ -60,8 +60,16 @@ namespace Game.Data
         [Min(0)] public int statusDuration;
 
         [Header("Presentation")]
-        [Tooltip("Key into the character's ClipSet.")]
+        [Tooltip("Key into the caster's ClipSet -- the character's own body animation "
+            + "(swing/cast/shoot), reused by every skill that shares this key rather than "
+            + "needing a unique clip per skill. Skill identity belongs on `effect` below, "
+            + "not here.")]
         public string clipKey;
+
+        [Tooltip("Optional skill-specific impact flipbook, independent of the caster's "
+            + "body clip above -- see SkillEffect's class doc. Null falls back to the "
+            + "map's generic impact FX (BattleVisuals.PlayImpactFx).")]
+        public SkillEffect effect;
 
         [Min(0f)] public float rollWeight = 1f;
     }

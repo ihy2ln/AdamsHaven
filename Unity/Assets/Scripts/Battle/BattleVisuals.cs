@@ -87,10 +87,14 @@ namespace Game.Battle
 
             // Parented under `go` so it tracks every existing tween for free -- see
             // BattleClipPlayer.Init's doc for why it needs `scale` to undo `go`'s own
-            // normalization. Left inactive; only HasActionClip-gated actions ever call
-            // PlayActionClip on it (see that method for which actions qualify).
+            // normalization. Left inactive; PlayActionClip (attacker) and
+            // PlayReactionClip (target, see HasReactionClip) are the only callers.
+            // Nudged slightly toward the camera (-z) so a reaction clip composites over
+            // this unit's own still-visible sprite instead of z-fighting it -- harmless
+            // for the attacker-clip case too, since that path already hides the sprite.
             var clipGo = new GameObject("Clip");
             clipGo.transform.SetParent(go.transform, false);
+            clipGo.transform.localPosition = new Vector3(0f, 0f, -0.05f);
             var clipPlayer = clipGo.AddComponent<BattleClipPlayer>();
             clipPlayer.Init(Shader.Find(ChromaKeyShaderName), scale);
             _clipPlayers[unit] = clipPlayer;
@@ -125,63 +129,31 @@ namespace Game.Battle
 
         const float StageTweenSeconds = 0.25f;
 
-        /// <summary>Tweens the acting unit and its target from their docks onto the
-        /// centre stage (each on its own faction's side) for a turn's cinematic beat.
-        /// Both may already be off-dock (harmless no-op tween if so). No-op for a unit
-        /// with no view (e.g. missing/never-built).</summary>
+        /// <summary>Tweens only the acting unit from its dock onto the centre stage (its
+        /// own faction's side) for a turn's cinematic beat -- the target stays put on its
+        /// dock throughout. No-op for a unit with no view (e.g. missing/never-built).</summary>
         public IEnumerator MoveToStage(BattleUnit actor, BattleUnit target)
         {
             yield return TweenPair(actor, BattleLayout.StagePosition(actor.Faction),
-                target, BattleLayout.StagePosition(target.Faction));
+                target, DockPosition(target));
         }
 
-        /// <summary>Reverse of MoveToStage/MoveToMelee -- tweens both back to their dock
-        /// positions. Safe to call even when the target never left its dock (the melee
-        /// case): tweening a unit to the position it's already at is a harmless no-op.</summary>
+        /// <summary>Reverse of MoveToStage -- tweens both back to their dock
+        /// positions.</summary>
         public IEnumerator ReturnToDock(BattleUnit actor, BattleUnit target)
         {
             yield return TweenPair(actor, DockPosition(actor), target, DockPosition(target));
         }
 
-        const float MeleeApproachOffset = 1.8f;
-
-        /// <summary>Melee-flavoured alternative to MoveToStage: the target stays put and
-        /// the attacker closes the distance, stopping just short on their own side (left
-        /// for a player attacker, right for an enemy attacker) rather than both units
-        /// jumping to generic centre-stage marks. ReturnToDock (unchanged) handles the
-        /// return trip afterward -- the target never moved, so its half of that tween is
-        /// a no-op.</summary>
-        public IEnumerator MoveToMelee(BattleUnit attacker, BattleUnit target)
-        {
-            if (!_unitViews.TryGetValue(attacker, out var attackerGo)) yield break;
-            if (!_unitViews.TryGetValue(target, out var targetGo)) yield break;
-
-            float side = attacker.Faction == Game.Data.Faction.Player ? -1f : 1f;
-            var approachPos = targetGo.transform.position + new Vector3(side * MeleeApproachOffset, 0f, 0f);
-
-            float t = 0f;
-            var from = attackerGo.transform.position;
-            while (t < StageTweenSeconds)
-            {
-                t += Time.deltaTime;
-                float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / StageTweenSeconds));
-                attackerGo.transform.position = Vector3.Lerp(from, approachPos, k);
-                yield return null;
-            }
-            attackerGo.transform.position = approachPos;
-        }
-
         /// <summary>True if `skill` has a real FMV clip to play for `unit` right now --
         /// callers (BattleController) branch on this to choose PlayActionClip over the
-        /// flat ImpactHoldSeconds wait. Deliberately restricted to the true basic attack
-        /// (skill == unit.Definition.standardSkill): every Skill Move currently shares
-        /// clipKey "basicAttack" too (BattleAssetBuilder.BuildSkillMove hasn't been given
-        /// per-skill clips yet), so playing it for e.g. Power Strike would show the
-        /// generic melee-swing clip on a skill it doesn't belong to -- Skill Moves keep
-        /// the existing sprite+flash/impact-FX presentation until they get their own.</summary>
+        /// flat ImpactHoldSeconds wait. Not restricted to the basic attack: this is the
+        /// caster's own body animation (swing/cast/shoot), reused by every skill sharing
+        /// that clipKey -- skill-specific identity belongs on SkillDefinition.effect
+        /// instead (see BattleController.ResolveAction/PlayImpactFx), so it's correct for
+        /// e.g. Power Strike to play the same swing clip as the plain basic attack.</summary>
         public bool HasActionClip(BattleUnit unit, SkillDefinition skill)
         {
-            if (skill != unit.Definition.standardSkill) return false;
             var entry = unit.Definition.clips != null ? unit.Definition.clips.Get(skill.clipKey) : null;
             return entry != null && entry.clip != null
                 && _clipPlayers.TryGetValue(unit, out var player) && player.IsReady;
@@ -200,6 +172,32 @@ namespace Game.Battle
             if (_unitRenderers.TryGetValue(unit, out var sr)) sr.enabled = false;
             yield return player.Play(entry, unit.FacingRight, onImpact);
             if (_unitRenderers.TryGetValue(unit, out var sr2)) sr2.enabled = true;
+        }
+
+        /// <summary>True if `unit` has a real "hit" reaction clip (ClipSet.KeyHit) to
+        /// overlay when it gets hit -- callers (BattleController.ResolveAction) check
+        /// this alongside FlashHit/PlayImpactFx. No character authors this clip yet (the
+        /// key was reserved from the start, see ClipSet's class doc, but only the 3
+        /// basic-attack clips exist today) -- this fails safe to the existing flash/FX
+        /// presentation until reaction clips are actually provided, same pattern as
+        /// HasActionClip.</summary>
+        public bool HasReactionClip(BattleUnit unit)
+        {
+            var entry = unit.Definition.clips != null ? unit.Definition.clips.Get(Game.Data.ClipSet.KeyHit) : null;
+            return entry != null && entry.clip != null
+                && _clipPlayers.TryGetValue(unit, out var player) && player.IsReady;
+        }
+
+        /// <summary>Plays the clip HasReactionClip already confirmed exists, layered over
+        /// `unit`'s sprite (not hiding it, unlike PlayActionClip -- this is an overlay
+        /// reaction, not a stand-in for the whole unit) via the -0.05z nudge BuildUnitView
+        /// gives every clip quad. Fire-and-forget like FlashHit/PlayImpactFx -- doesn't
+        /// block the turn's PlayImpactBeat, since a hit reaction should play alongside the
+        /// attacker's own action clip, not gate it.</summary>
+        public void PlayReactionClip(BattleUnit unit)
+        {
+            var entry = unit.Definition.clips.Get(Game.Data.ClipSet.KeyHit);
+            StartCoroutine(_clipPlayers[unit].Play(entry, unit.FacingRight, onImpact: null));
         }
 
         /// <summary>Reposition action: two same-faction units have already swapped Column
@@ -320,30 +318,41 @@ namespace Game.Battle
         const float FxWorldHeight = 1.8f;
         const float FxFrameSeconds = 0.045f;
 
-        public void PlayImpactFx(BattleUnit target)
+        /// <summary>Overlays an impact flipbook on `target`. Uses `skill.effect` (see
+        /// SkillEffect's class doc) when the skill authors one, otherwise falls back to
+        /// the map's generic fxImpactSheet -- every skill today falls back, since no
+        /// SkillEffect assets exist yet, but this is the hook a future skill/orb-specific
+        /// effect plugs into without touching this method again.</summary>
+        public void PlayImpactFx(BattleUnit target, SkillDefinition skill = null)
         {
-            if (_map == null || _map.fxImpactSheet == null || _map.fxImpactFrameRects.Count == 0) return;
+            var effect = skill != null ? skill.effect : null;
+            Sprite sheet = effect != null ? effect.sheet : _map?.fxImpactSheet;
+            List<Vector4> rects = effect != null ? effect.frameRects : _map?.fxImpactFrameRects;
+            float worldHeight = effect != null ? effect.worldHeight : FxWorldHeight;
+            float frameSeconds = effect != null ? effect.frameSeconds : FxFrameSeconds;
+
+            if (sheet == null || rects == null || rects.Count == 0) return;
             if (!_unitViews.TryGetValue(target, out var targetGo)) return;
-            StartCoroutine(ImpactFxRoutine(targetGo.transform.position + Vector3.up * 0.6f));
+            StartCoroutine(ImpactFxRoutine(targetGo.transform.position + Vector3.up * 0.6f, sheet, rects, worldHeight, frameSeconds));
         }
 
-        System.Collections.IEnumerator ImpactFxRoutine(Vector3 worldPos)
+        System.Collections.IEnumerator ImpactFxRoutine(Vector3 worldPos, Sprite sheet, List<Vector4> frameRects, float worldHeight, float frameSeconds)
         {
-            var tex = _map.fxImpactSheet.texture;
+            var tex = sheet.texture;
             var go = new GameObject("ImpactFx");
             go.transform.SetParent(transform, false);
             go.transform.position = worldPos;
             var sr = go.AddComponent<SpriteRenderer>();
             sr.sortingOrder = 20;
 
-            foreach (var rect in _map.fxImpactFrameRects)
+            foreach (var rect in frameRects)
             {
                 var pixelRect = new Rect(rect.x, tex.height - rect.y - rect.w, rect.z, rect.w);
                 var frameSprite = Sprite.Create(tex, pixelRect, new Vector2(0.5f, 0.5f), 100f);
                 sr.sprite = frameSprite;
-                float s = FxWorldHeight / Mathf.Max(frameSprite.bounds.size.y, 0.01f);
+                float s = worldHeight / Mathf.Max(frameSprite.bounds.size.y, 0.01f);
                 go.transform.localScale = Vector3.one * s;
-                yield return new WaitForSeconds(FxFrameSeconds);
+                yield return new WaitForSeconds(frameSeconds);
             }
             Destroy(go);
         }

@@ -9,7 +9,7 @@ branch (not merged to `main` yet). Original task brief:
 design: `S:\AI\Game\FOUNDATION.md`. **Both are stale on combat model/camera/art
 pipeline** — see "What changed from the original design" below before trusting
 anything they say about the battle system specifically. Wiki (if reachable — see
-"Known gaps"): https://github.com/ihy2ln/AI.Game/wiki, pages: Home, Battle-System,
+"Known gaps"): https://github.com/ihy2ln/AdamsHaven/wiki, pages: Home, Battle-System,
 Art-Pipeline, Roadmap. Same content as this file, more browsable.
 
 ## TL;DR current state
@@ -47,14 +47,26 @@ M10 replaces the old two-skill model with a real **Skill Move (SM)
 system**: every unit has a free "BA" (Basic Attack) plus 3 mana-cost Skill Moves,
 accessed via the compact SM icon. The manual-mode action menu is
 now 4 small icons (**BA / SM / R / S**) anchored right under the acting character
-instead of a full-width panel, and melee-flavoured attacks now have the attacker walk up
-to the target instead of both units jumping to generic stage marks. See "What changed"
-below and [[Battle-System]]. **This session also found and fixed a real, previously
-unknown bug** (`BattleBootstrap`/`FarmBootstrap` never actually attaching a `Camera`
-component, crashing the very first `Play`) — see item 7 below; this was root-caused
-via the project owner's own interactive Editor session, the first time this project's
-battle scene had actually been played back interactively rather than only screenshotted
-via automation.
+instead of a full-width panel. M10 also gave melee-flavoured attacks a walk-up-to-target
+approach instead of both units jumping to generic stage marks -- **since superseded by
+M15's move to a single, simpler centre-stage beat for every action, see item 12 below.**
+See "What changed" below and [[Battle-System]]. **This session also found and fixed a
+real, previously unknown bug** (`BattleBootstrap`/`FarmBootstrap` never actually
+attaching a `Camera` component, crashing the very first `Play`) — see item 7 below; this
+was root-caused via the project owner's own interactive Editor session, the first time
+this project's battle scene had actually been played back interactively rather than only
+screenshotted via automation.
+
+M15 (this session) reworks how a turn's action reads visually, after two rounds of the
+project owner watching it play out and redirecting: every action now moves only the
+acting unit to a shared centre-stage mark (the target never moves), replacing both M10's
+melee walk-up-to-target *and* an intermediate "attacker crosses fully onto the target's
+side" attempt that didn't survive first contact with actual play. Separately, a
+character's body animation (its FMV clip) and a skill's visual identity are now fully
+decoupled -- every skill move plays the caster's own swing/cast clip (previously
+basic-attack-only), while a new optional `SkillEffect` asset carries the skill-specific
+impact visual, in preparation for the project owner's planned "skill orb" system. See
+item 12 below and [[Battle-System]].
 
 ## What changed from the original design
 
@@ -406,6 +418,46 @@ via automation.
       these new enemies can be played against -- "we can't really check the status
       effect step but we can check that at another time after we get more enemy
       types."
+12. **Centre-stage-only movement, body/skill-effect decoupling -- M15.** The project
+    owner explicitly ruled out rigged skeletal models for now ("keep the original
+    path") and asked instead for two presentation changes, refined twice by watching the
+    result in the project owner's own live Editor session:
+    - **Movement, after two live iterations.** The first attempt (per "the aggressing
+      unit will crossover to the aggressed side") had any offensive action's attacker
+      cross fully onto the target's dock side (`BattleVisuals.MoveToAggressedSide`, a
+      generalization of M10's melee approach to ranged skills too). A screenshot from
+      the project owner's own play session showed the attacker travelling much further
+      than intended, and the follow-up direction was simpler: "make the aggressor move
+      to the middle" -- `BattleLayout.StagePosition`/`MoveToStage` already did exactly
+      that (it's the same "meet near centre, each on your own faction's side" mark M7's
+      three-panel layout introduced), so the fix was to route every action through it
+      instead of introducing a new method. A third refinement ("only the
+      attacking/action unit will move to the center") removed even the target's half of
+      that tween -- `MoveToStage` now only moves the actor; the target stays on its dock
+      for the whole beat. Net result: `MoveToAggressedSide`, M10's `MoveToMelee`, and
+      `BattleController.IsMeleeAction` are all deleted -- every action (melee, ranged,
+      ally-targeting alike) now shares one movement path.
+    - **Body animation vs. skill effect, fully decoupled.** Prompted by the project
+      owner's plan to eventually add per-character attack/special animations and let
+      "skill orbs" grant animations to units. `BattleVisuals.HasActionClip` no longer
+      restricts FMV clip playback to `skill == unit.Definition.standardSkill` -- every
+      Skill Move now plays the caster's own body clip (swing/cast/shoot) too, not just
+      the plain basic attack, since `clipKey` was already identical across every skill on
+      a unit (`BattleAssetBuilder` has set it to `"basicAttack"` uniformly since M10 --
+      this gate was the only thing stopping Skill Moves from using it). A skill's own
+      visual identity moved to a new field instead: `SkillDefinition.effect`, an optional
+      reference to a new `SkillEffect` asset (`Scripts/Data/Combat/SkillEffect.cs`, a
+      standalone impact-flipbook asset -- same sheet+frame-rect shape `MapDefinition`
+      already used for its generic impact FX, but skill-specific and shareable across
+      skills/orbs rather than one-per-map). `BattleVisuals.PlayImpactFx` now takes the
+      acting skill and uses `skill.effect` when authored, falling back to the map's
+      generic impact sheet otherwise -- true of every skill today, since no `SkillEffect`
+      assets exist yet, so this is pure plumbing ahead of content, same pattern as every
+      other "provided later" system in this project (FMV clips, potions, etc.).
+    - **No new `ContentVersion` bump.** Nothing here required rebuilding
+      `Resources/Battle` -- `SkillDefinition.effect` is a new optional field that
+      defaults to null on every existing asset, and `clipKey` values were already
+      correct; only the code reading them changed.
 
 ## Roster
 
@@ -473,6 +525,7 @@ costs the turn.
 | M12 | MP economy (BA trickle, between-map recovery, Mana Spring), FMV chroma-key components, code-based Skill Move tests | *(not yet tagged)* |
 | M13 | Battle potions (3 slots, F-SSS rank), standard JRPG status effects, per-turn MP regen, Android-first platform priority | *(not yet tagged)* |
 | M14 | `impactFrames` re-fix (authored in C#), map-2-only enemy roster (Rotfang/Deadeye/Hexweaver), offensive-Skill-Move AI | *(not yet tagged)* |
+| M15 | Centre-stage-only movement (crossover attempts reverted after live testing), body animation/skill effect decoupling (`SkillEffect`) | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -525,6 +578,13 @@ potion slots).
 
 ## Known gaps
 
+- **M15's code changes (centre-stage-only movement, body/skill-effect decoupling)
+  haven't had a headless EditMode test pass yet.** They landed while the project
+  owner's Editor was open live (playing through M14's map-2 content), and batchmode
+  can't run alongside an open Editor on the same project (shared lockfile) -- run
+  `-runTests` once the Editor's closed to confirm the 53/56-passing baseline still
+  holds (the 3 pre-existing failures are M14's own asset-rebuild-pending ones, already
+  resolved by that same live session; a fresh run should show all passing now).
 - **Resolved this session, confirmed by the project owner's own interactive Editor
   use: manual mode's click-to-target and the action-menu buttons work fine with a real
   mouse.** The long-standing "never interactively click-tested" gap below was always
@@ -678,32 +738,39 @@ potion slots).
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Rebuild in the interactive Editor and re-run the tests.** M14's content (map-2
-   roster, `impactFrames` re-fix) needs the same `BattleContentGuard` auto-rebuild
-   every prior content addition has, plus a headless `-runTests` pass to confirm both
-   fixes actually hold on a fresh `Build()`.
+2. **Confirm M15's movement and body/skill-effect split hold up in play, then a headless
+   test pass.** M14's Editor rebuild already happened (the project owner's own live
+   session -- `Char_enemy_rotfang`/`Char_enemy_deadeye`/`Char_enemy_hexweaver` and their
+   skills are on disk); M15's movement rework and `SkillEffect` decoupling landed as
+   pure code during that same live session and haven't had a headless `-runTests` pass
+   yet (Unity was open throughout -- can't run batchmode alongside it, see "Known
+   gaps"). Run that pass once the Editor's closed to confirm nothing regressed.
 3. **Play map 2 and confirm the status-effect system for real.** This is the
    project owner's own stated next checkpoint for it -- fight Rotfang/Deadeye/
    Hexweaver, confirm Poison/Attack Down/Defense Down/Stun are all visibly doing
    something, and that auto mode's units (both sides) sometimes reach for an
    offensive Skill Move instead of only ever basic-attacking.
-4. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
+4. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
+   the map's generic impact FX, since no skill-specific effect exists yet -- the hook
+   (`SkillDefinition.effect`) is ready the moment art/effect sheets are available, no
+   further code changes needed to attach one.
+5. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
    the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
    battle) because no economy system exists yet to source real starting inventory from.
-5. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+6. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations) -- explicitly deferred by the project owner until the foundation above
    is laid out further. The components are ready (M12) whenever this comes back up.
-6. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
+7. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
    fix) -- currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold,
    not synced to the clip's actual hit frame.
-7. Consider extending the status-effect system if content wants to go beyond the 6
+8. Consider extending the status-effect system if content wants to go beyond the 6
    types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
    core tick/apply/multiplier plumbing (M13) is general enough to add types to without
    restructuring it. `Poison` itself is still unused outside of Rotfang.
-8. More enemy variety beyond map 2's 3, if the project owner wants it -- the
+9. More enemy variety beyond map 2's 3, if the project owner wants it -- the
    `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
    borrow art from an existing `CharacterDefinition` (no new art generation needed).
-9. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+10. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
    reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
    farm/town economy) are designed but not connected to this battle system yet —
    that's the actual "rest of the game," this slice only proves the battle screen works.

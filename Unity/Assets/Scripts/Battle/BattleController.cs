@@ -248,11 +248,6 @@ namespace Game.Battle
         /// what actually gets spent/checked against, not the raw authored cost.</summary>
         public int EffectiveMpCost(SkillDefinition skill) => Mathf.RoundToInt(skill.mpCost * Settings.MpCostMultiplier);
 
-        /// <summary>True for a skill that should read as an up-close strike (aggressor
-        /// closes the distance to the target) rather than the generic centre-stage
-        /// cinematic beat -- any attack that isn't ranged or a heal/self-buff.</summary>
-        public bool IsMeleeAction(SkillDefinition skill) => !skill.targetsAllies && !skill.isRanged;
-
         IEnumerator RunBattle()
         {
             while (!World.IsOver)
@@ -316,7 +311,7 @@ namespace Game.Battle
             }
 
             var target = targets[UnityEngine.Random.Range(0, targets.Count)];
-            yield return IsMeleeAction(skill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
+            yield return _visuals.MoveToStage(unit, target);
             var hitTargets = ResolveAction(unit, skill, target);
             yield return PlayImpactBeat(unit, skill);
             yield return _visuals.ReturnToDock(unit, target);
@@ -417,7 +412,7 @@ namespace Game.Battle
                     }
                     yield return new WaitUntil(() => _submittedTarget != null);
                     var target = _submittedTarget;
-                    yield return IsMeleeAction(_chosenSkill) ? _visuals.MoveToMelee(unit, target) : _visuals.MoveToStage(unit, target);
+                    yield return _visuals.MoveToStage(unit, target);
                     var hitTargets = ResolveAction(unit, _chosenSkill, target);
                     yield return PlayImpactBeat(unit, _chosenSkill);
                     yield return _visuals.ReturnToDock(unit, target);
@@ -573,7 +568,8 @@ namespace Game.Battle
                 LogLine($"{unit.Definition.displayName} hits {hit.Definition.displayName} for {damage}.");
                 if (Settings.ShowDamageNumbers) SpawnDamageNumber(hit, damage.ToString(), Color.white);
                 _visuals.FlashHit(hit);
-                _visuals.PlayImpactFx(hit);
+                _visuals.PlayImpactFx(hit, skill);
+                if (_visuals.HasReactionClip(hit)) _visuals.PlayReactionClip(hit);
                 if (!hit.IsAlive)
                 {
                     _visuals.SyncDefeated(hit);

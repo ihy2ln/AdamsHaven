@@ -148,14 +148,13 @@ namespace Game.Tests
         [Test]
         public void MeleeUnits_HaveAMeleeFlavouredAttack()
         {
-            // BattleController.IsMeleeAction drives BattleVisuals.MoveToMelee (walk up to
-            // the target) instead of the generic centre-stage tween -- it keys off
-            // !targetsAllies && !isRanged, so a melee BA flagged isRanged would silently
-            // lose the approach animation.
+            // DamageCalculator.ComputeDamage grants a ranged-only damage bonus that scales
+            // with column distance -- a melee BA flagged isRanged would get that bonus,
+            // on top of misrepresenting the archetype in any future ranged-only logic.
             foreach (var unitId in AllUnitIds.Where(id => id.EndsWith("melee")))
             {
                 var def = Load(unitId);
-                Assert.IsFalse(def.standardSkill.isRanged, $"{unitId}'s BA is flagged ranged -- it won't walk up to its target.");
+                Assert.IsFalse(def.standardSkill.isRanged, $"{unitId}'s BA is flagged ranged -- it would get the ranged distance damage bonus.");
                 Assert.IsFalse(def.standardSkill.targetsAllies, $"{unitId}'s BA should target enemies.");
             }
         }

@@ -21,9 +21,9 @@ namespace Game.EditorTools
 
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(scenePath, true) };
 
-            PlayerSettings.productName = "AI.Game Farm";
+            PlayerSettings.productName = "Adams Haven";
             PlayerSettings.companyName = "AI.Game";
-            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.aigame.farm");
+            PlayerSettings.SetApplicationIdentifier(BuildTargetGroup.Android, "com.adamshaven.game");
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
 
             AssetDatabase.SaveAssets();

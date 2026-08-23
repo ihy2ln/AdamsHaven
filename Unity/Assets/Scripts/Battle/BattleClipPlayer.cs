@@ -15,9 +15,11 @@ namespace Game.Battle
     ///
     /// FOUNDATION.md's three-layer renderer always intended chroma-keyed FMV over the
     /// static side-view background; BattleVisuals only ever rendered sprites until M12
-    /// wired this plumbing through. Real clips already exist for the 3 basic-attack
-    /// archetypes (Tools/ComfyUI, M1/M2) -- see BattleVisuals.HasActionClip for which
-    /// actions actually reach this component and why the rest still use sprites.
+    /// wired this plumbing through. Real clips exist for the 3 basic-attack archetypes
+    /// (Tools/ComfyUI, M1/M2) and double as every character's generic body animation --
+    /// every skill sharing that archetype's clipKey reuses the same clip (see
+    /// BattleVisuals.HasActionClip), with skill-specific identity carried separately by
+    /// SkillDefinition.effect instead of a unique clip per skill.
     ///
     /// Known gap: the impactFrames metadata baked into today's Clip_*.asset files reads as
     /// corrupted (values in the millions on a few-hundred-frame clip -- e.g. 12000000
