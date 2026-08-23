@@ -100,6 +100,21 @@ namespace Game.EditorTools
                 int moves = def.skillMoves?.Count(s => s != null) ?? 0;
                 if (moves == 0) problems.Add($"{def.name} has no skillMoves (SM would be greyed out)");
                 if (def.maxMp <= 0) problems.Add($"{def.name} has maxMp {def.maxMp}");
+
+                // M16/M17: the same three silent-inertness failures BattleAssetContentTests
+                // asserts. Each one looks like working content -- the battle runs fine -- it
+                // just quietly never triggers the system it belongs to: Neutral is a 1x
+                // no-op through ElementChart, a null ultimate leaves the U button unable to
+                // ever enable, and accuracy 0 is read as "always hits" by
+                // DamageCalculator.HitChance while critRate 0 simply never crits. Exactly
+                // the shape of the M10 Skill Move bug this guard exists to prevent.
+                if (def.element == ElementType.Neutral)
+                    problems.Add($"{def.name} is Neutral (elements would be a no-op for it)");
+                if (def.ultimateSkill == null)
+                    problems.Add($"{def.name} has no ultimateSkill (the U button could never enable)");
+                if (def.baseStats.critRate <= 0f || def.baseStats.accuracy <= 0f)
+                    problems.Add($"{def.name} has unauthored combat stats "
+                        + $"(critRate {def.baseStats.critRate}, accuracy {def.baseStats.accuracy})");
             }
 
             // M13: the 3 battle-inventory potions BattleWorld.SeedPlaceholderInventory

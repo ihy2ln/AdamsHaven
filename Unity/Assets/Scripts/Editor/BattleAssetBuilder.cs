@@ -42,8 +42,12 @@ namespace Game.EditorTools
         /// (Rotfang/Deadeye/Hexweaver). 8 = M16's per-archetype element (CharacterDefinition
         /// .element/SkillDefinition.element, previously always Neutral) and one ultimate
         /// skill per archetype (CharacterDefinition.ultimateSkill, previously always null).
+        /// 9 = M17's map-2 enemy elements + ultimates (Rotfang/Deadeye/Hexweaver, the
+        /// BuildCustomEnemy path M16 skipped) and the first authored crit/accuracy/
+        /// evasion numbers on every StatBlock, replacing BattleWorld's temporary random
+        /// rolls.
         /// </summary>
-        public const int ContentVersion = 8;
+        public const int ContentVersion = 9;
 
         /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
         /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
@@ -581,21 +585,65 @@ namespace Game.EditorTools
         /// so it can sustain its own side, same "healers can attack/support" pattern as
         /// the player roster). Reuses the same 3 base patterns every archetype already
         /// shares -- these enemies don't need new targeting shapes, just a new kit.
-        /// Numbers are arbitrary (project owner direction), not a tuned balance pass.</summary>
+        /// Numbers are arbitrary (project owner direction), not a tuned balance pass.
+        ///
+        /// M17 adds the element on each of these (matching the caster, the same "starting
+        /// SM matches the unit's element" rule the archetypes follow) plus one ultimate
+        /// per enemy -- see Map2EnemyElement for why these three elements specifically,
+        /// and BuildMap2Enemies for how they get attached.</summary>
         static Dictionary<string, SkillDefinition> BuildMap2EnemySkills(
             SkillPattern meleePattern, SkillPattern rangedPattern, SkillPattern supportPattern)
         {
             var venomStrike = BuildSkillMove("Skill_EnemyVenomStrike", "Venom Strike",
                 meleePattern, power: 1.5f, usesMagic: false, targetsAllies: false, mpCost: 25,
-                inflictsStatus: StatusEffectType.Poison, statusMagnitude: 12f, statusDuration: 3);
+                inflictsStatus: StatusEffectType.Poison, statusMagnitude: 12f, statusDuration: 3,
+                element: Map2EnemyElement("enemy_rotfang"));
             var cripplingShot = BuildSkillMove("Skill_EnemyCripplingShot", "Crippling Shot",
                 rangedPattern, power: 1.4f, usesMagic: false, targetsAllies: false, mpCost: 25, isRanged: true,
-                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.25f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.25f, statusDuration: 2,
+                element: Map2EnemyElement("enemy_deadeye"));
             var hexweaverHeal = BuildSkillMove("Skill_EnemyHexweaverHeal", "Heal",
-                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 20);
+                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 20,
+                element: Map2EnemyElement("enemy_hexweaver"));
             var weaken = BuildSkillMove("Skill_EnemyWeaken", "Weaken",
                 supportPattern, power: 0.8f, usesMagic: true, targetsAllies: false, mpCost: 25,
-                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.25f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.25f, statusDuration: 2,
+                element: Map2EnemyElement("enemy_hexweaver"));
+
+            // Ultimates (M17) -- the map-2 half of M16's per-archetype ultimates, built
+            // the same way (mpCost 0, gauge-gated by BattleController.ResolveAction) and
+            // following the same "matches the caster's element and class type" rule.
+            // These matter more than the player-side ones for actually *seeing* the
+            // system work: ChooseAutoSkill already fires an ultimate for any unit that
+            // has one authored, so with these in place a plain auto-battle of map 2
+            // throws enemy ultimates on its own, with no manual input needed.
+            // 2.6, not Inferno Blade's 3.2: Rotfang's attack (26) is already the
+            // highest in the game and the Brute profile's 1.80 crit is the biggest
+            // multiplier, so 3.2 crit into a Broken Kestrel (Break subtracts from
+            // DefenseMultiplier) lands past her whole 120 HP bar. An enemy ultimate that
+            // can delete a full-health front-liner outright isn't a difficulty spike,
+            // it's a coin flip -- 2.6 keeps the worst case scary and survivable.
+            var plagueMaw = BuildSkillMove("Skill_EnemyRotfangUltimate", "Plague Maw",
+                meleePattern, power: 2.6f, usesMagic: false, targetsAllies: false, mpCost: 0,
+                inflictsStatus: StatusEffectType.Poison, statusMagnitude: 20f, statusDuration: 3,
+                element: Map2EnemyElement("enemy_rotfang"));
+            // Reuses Gale Storm's own barrage pattern asset (same shape, so LoadOrCreate
+            // just hands back the one Skill_RangedUltimate already built) -- an enemy
+            // full-party AoE is the clearest possible read on "elements are live", since
+            // a single cast hits all three party members at three different multipliers.
+            var stormVolley = BuildSkillMove("Skill_EnemyDeadeyeUltimate", "Storm Volley",
+                BuildBarragePattern(rangedPattern.rangeOffsets), power: 0.85f, usesMagic: false,
+                targetsAllies: false, mpCost: 0, isRanged: true,
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.3f, statusDuration: 3,
+                element: Map2EnemyElement("enemy_deadeye"));
+            // Hexweaver's mirrors Tidal Renewal (full-side heal + Regen) rather than
+            // adding a third damage ultimate -- it's the only thing in the game that
+            // exercises the ally-targeting ultimate path from the *enemy* side, and it
+            // gives the party a reason to focus the enemy healer down first.
+            var bloodChorus = BuildSkillMove("Skill_EnemyHexweaverUltimate", "Blood Chorus",
+                BuildWideHealPattern(), power: 2.2f, usesMagic: true, targetsAllies: true, mpCost: 0,
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 12f, statusDuration: 3,
+                element: Map2EnemyElement("enemy_hexweaver"));
 
             return new Dictionary<string, SkillDefinition>
             {
@@ -603,8 +651,37 @@ namespace Game.EditorTools
                 ["cripplingShot"] = cripplingShot,
                 ["hexweaverHeal"] = hexweaverHeal,
                 ["weaken"] = weaken,
+                ["rotfangUltimate"] = plagueMaw,
+                ["deadeyeUltimate"] = stormVolley,
+                ["hexweaverUltimate"] = bloodChorus,
             };
         }
+
+        /// <summary>M17: map 2's elements, chosen so each enemy is weak to a *different*
+        /// party member rather than for flavour. The party is Fire (Kestrel/melee), Wind
+        /// (Sable/ranged), Water (Linnet/support), and ElementChart's cycle is
+        /// Fire > Wind > Earth > Lightning > Water > Fire, so:
+        ///   Rotfang = Earth     -- weak to Sable's Wind (1.5x), and its own Earth hits
+        ///                          are resisted by her in return.
+        ///   Deadeye = Lightning -- the one enemy nothing in the party is strong against,
+        ///                          on purpose: it's strong *into* Linnet (Lightning
+        ///                          beats Water both ways), so it reads as "the sniper
+        ///                          that specifically threatens your healer" instead of
+        ///                          being another rock-paper-scissors answer. It pays for
+        ///                          that with the roster's lowest HP and defense.
+        ///   Hexweaver = Fire    -- weak to Linnet's Water, and strong into Sable's Wind.
+        /// Between this and M16's Fire/Wind/Water archetypes, all 5 elements of the cycle
+        /// are now live in an actual battle; only Light/Dark are still unused (no content
+        /// carries either, so they'd be a no-op 1x either way -- see ElementChart).
+        /// Arbitrary in the sense the project convention means -- coherent, but not a
+        /// tuned balance pass.</summary>
+        static ElementType Map2EnemyElement(string unitId) => unitId switch
+        {
+            "enemy_rotfang" => ElementType.Earth,
+            "enemy_deadeye" => ElementType.Lightning,
+            "enemy_hexweaver" => ElementType.Fire,
+            _ => ElementType.Neutral,
+        };
 
         /// <summary>Map 2's 3 enemies (M14), reusing Thorne/Reed/Vesper's already-built
         /// art+clips (BuildCharacter already loaded those into characterDefs for the
@@ -616,26 +693,38 @@ namespace Game.EditorTools
             Dictionary<string, CharacterDefinition> characterDefs, Dictionary<string, SkillDefinition> skills)
         {
             var rotfangBa = BuildSkillMove("Skill_EnemyRotfangBasic", "Bite",
-                characterDefs["enemy_melee"].standardSkill.pattern, power: 1.2f, usesMagic: false, targetsAllies: false, mpCost: 0);
+                characterDefs["enemy_melee"].standardSkill.pattern, power: 1.2f, usesMagic: false, targetsAllies: false, mpCost: 0,
+                element: Map2EnemyElement("enemy_rotfang"));
             var deadeyeBa = BuildSkillMove("Skill_EnemyDeadeyeBasic", "Snipe Shot",
-                characterDefs["enemy_ranged"].standardSkill.pattern, power: 1.0f, usesMagic: false, targetsAllies: false, mpCost: 0, isRanged: true);
+                characterDefs["enemy_ranged"].standardSkill.pattern, power: 1.0f, usesMagic: false, targetsAllies: false, mpCost: 0, isRanged: true,
+                element: Map2EnemyElement("enemy_deadeye"));
             var hexweaverBa = BuildSkillMove("Skill_EnemyHexweaverBasic", "Hex Bolt",
-                characterDefs["enemy_support"].standardSkill.pattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0);
+                characterDefs["enemy_support"].standardSkill.pattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0,
+                element: Map2EnemyElement("enemy_hexweaver"));
 
+            // Crit/accuracy/evasion (M17) are authored right here alongside the rest of
+            // the StatBlock, same as the archetypes -- see CombatStats for the shape of
+            // the numbers and why each enemy gets the profile it does.
             var rotfang = BuildCustomEnemy("enemy_rotfang", "Rotfang", ClassType.Warrior,
-                new StatBlock { hp = 150, attack = 26, defense = 16, magic = 4, resistance = 8, speed = 8 },
+                new StatBlock { hp = 150, attack = 26, defense = 16, magic = 4, resistance = 8, speed = 8 }
+                    .WithCombatStats(CombatStats.Brute),
                 rotfangBa, new List<SkillDefinition> { skills["venomStrike"] },
-                characterDefs["player_bench_melee"]);
+                characterDefs["player_bench_melee"],
+                Map2EnemyElement("enemy_rotfang"), skills["rotfangUltimate"]);
 
             var deadeye = BuildCustomEnemy("enemy_deadeye", "Deadeye", ClassType.Ranger,
-                new StatBlock { hp = 100, attack = 24, defense = 8, magic = 8, resistance = 8, speed = 13 },
+                new StatBlock { hp = 100, attack = 24, defense = 8, magic = 8, resistance = 8, speed = 13 }
+                    .WithCombatStats(CombatStats.Sniper),
                 deadeyeBa, new List<SkillDefinition> { skills["cripplingShot"] },
-                characterDefs["player_bench_ranged"]);
+                characterDefs["player_bench_ranged"],
+                Map2EnemyElement("enemy_deadeye"), skills["deadeyeUltimate"]);
 
             var hexweaver = BuildCustomEnemy("enemy_hexweaver", "Hexweaver", ClassType.Healer,
-                new StatBlock { hp = 105, attack = 10, defense = 10, magic = 22, resistance = 14, speed = 10 },
+                new StatBlock { hp = 105, attack = 10, defense = 10, magic = 22, resistance = 14, speed = 10 }
+                    .WithCombatStats(CombatStats.Caster),
                 hexweaverBa, new List<SkillDefinition> { skills["hexweaverHeal"], skills["weaken"] },
-                characterDefs["player_bench_support"]);
+                characterDefs["player_bench_support"],
+                Map2EnemyElement("enemy_hexweaver"), skills["hexweaverUltimate"]);
 
             return new Dictionary<string, CharacterDefinition>
             {
@@ -650,16 +739,20 @@ namespace Game.EditorTools
         /// borrows every art reference (battleSprite/portrait/pixelSprite32/clips)
         /// directly from an already-built CharacterDefinition instead. No tier parameter
         /// -- tier isn't stored on CharacterDefinition, it's applied per-EnemyPlacement
-        /// (see BuildMap2Enemies' callers).</summary>
+        /// (see BuildMap2Enemies' callers).
+        ///
+        /// `element`/`ultimateSkill` are M17 additions: this path hardcoded
+        /// ElementType.Neutral and left ultimateSkill null, which is exactly why M16's
+        /// combat pass never reached map 2's roster.</summary>
         static CharacterDefinition BuildCustomEnemy(string unitId, string displayName, ClassType classType,
             StatBlock baseStats, SkillDefinition standardSkill, List<SkillDefinition> skillMoves,
-            CharacterDefinition artSource)
+            CharacterDefinition artSource, ElementType element, SkillDefinition ultimateSkill)
         {
             var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
             def.characterId = unitId;
             def.displayName = displayName;
             def.classType = classType;
-            def.element = ElementType.Neutral;
+            def.element = element;
             def.age = Age.Modern;
             def.baseStats = baseStats;
             def.maxMp = 100;
@@ -670,6 +763,7 @@ namespace Game.EditorTools
             def.costPerHeightLevel = 1;
             def.standardSkill = standardSkill;
             def.skillMoves = new List<SkillDefinition>(skillMoves);
+            def.ultimateSkill = ultimateSkill;
             def.growthPerLevel = 0.06f;
             def.clips = artSource.clips;
             def.portrait = artSource.portrait;
@@ -773,12 +867,19 @@ namespace Game.EditorTools
                 TargetsAllies = targetsAllies;
                 Power = power;
                 RangeOffsets = rangeOffsets;
+                // WithCombatStats (M17) authors crit/accuracy/evasion, which every
+                // StatBlock in the game left at 0 through M16 -- see CombatStats for the
+                // profiles and BattleWorld for the temporary random roll this replaced.
                 BaseStats = name switch
                 {
-                    "Melee" => new StatBlock { hp = 120, attack = 22, defense = 14, magic = 6, resistance = 8, speed = 9 },
-                    "Ranged" => new StatBlock { hp = 90, attack = 18, defense = 8, magic = 8, resistance = 8, speed = 11 },
-                    "Support" => new StatBlock { hp = 95, attack = 8, defense = 9, magic = 20, resistance = 12, speed = 10 },
-                    _ => new StatBlock { hp = 100, attack = 15, defense = 10, magic = 10, resistance = 10, speed = 10 },
+                    "Melee" => new StatBlock { hp = 120, attack = 22, defense = 14, magic = 6, resistance = 8, speed = 9 }
+                        .WithCombatStats(CombatStats.Bruiser),
+                    "Ranged" => new StatBlock { hp = 90, attack = 18, defense = 8, magic = 8, resistance = 8, speed = 11 }
+                        .WithCombatStats(CombatStats.Skirmisher),
+                    "Support" => new StatBlock { hp = 95, attack = 8, defense = 9, magic = 20, resistance = 12, speed = 10 }
+                        .WithCombatStats(CombatStats.Caster),
+                    _ => new StatBlock { hp = 100, attack = 15, defense = 10, magic = 10, resistance = 10, speed = 10 }
+                        .WithCombatStats(CombatStats.Caster),
                 };
                 Element = name switch
                 {

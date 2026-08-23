@@ -99,9 +99,7 @@ namespace Game.Battle
                         Debug.LogWarning($"[AI.Game] Missing CharacterDefinition for {unitId}");
                         continue;
                     }
-                    int unitSeed = seed++;
-                    var instance = CharacterFactory.Create(def, tier, noRollPool, unitSeed);
-                    RandomizeTestCombatStats(instance, unitSeed);
+                    var instance = CharacterFactory.Create(def, tier, noRollPool, seed++);
                     AllUnits.Add(new BattleUnit(def, instance, Faction.Player, column, facingRight: true));
                 }
             }
@@ -121,9 +119,7 @@ namespace Game.Battle
                         Debug.LogWarning($"[AI.Game] Missing CharacterDefinition for {unitId}");
                         continue;
                     }
-                    int unitSeed = seed++;
-                    var instance = CharacterFactory.Create(def, tier, noRollPool, unitSeed);
-                    RandomizeTestCombatStats(instance, unitSeed);
+                    var instance = CharacterFactory.Create(def, tier, noRollPool, seed++);
                     Bench.Add(new BattleUnit(def, instance, Faction.Player, BenchColumn, facingRight: true));
                 }
             }
@@ -132,9 +128,7 @@ namespace Game.Battle
             {
                 if (placement.character == null) continue;
                 var placementTier = placement.tier != null ? placement.tier : tier;
-                int unitSeed = seed++;
-                var instance = CharacterFactory.Create(placement.character, placementTier, noRollPool, unitSeed);
-                RandomizeTestCombatStats(instance, unitSeed);
+                var instance = CharacterFactory.Create(placement.character, placementTier, noRollPool, seed++);
                 AllUnits.Add(new BattleUnit(placement.character, instance, Faction.Enemy, placement.position.y, facingRight: false));
             }
 
@@ -142,30 +136,6 @@ namespace Game.Battle
             WarnOnStaleContent();
 
             Inventory = carryOverInventory ?? SeedPlaceholderInventory();
-        }
-
-        /// <summary>Temporary testing aid (M16): no character content has real
-        /// crit/accuracy/evasion numbers authored yet (every CharacterDefinition.baseStats
-        /// still has them at 0, the type default), which would leave the whole crit/miss
-        /// system invisible in actual play until a real balance pass exists. Adds a random
-        /// but "playable" (not min/maxed, not zero) roll on top of whatever's already
-        /// there, seeded off the same per-unit seed CharacterFactory.Create just used so a
-        /// given battle seed still reproduces the same numbers. Mutates `instance
-        /// .rolledStats` -- the per-unit CharacterInstance CharacterFactory.Create just
-        /// returned, never the shared CharacterDefinition asset -- so this can't leak
-        /// state across units or battles. Remove (or replace with real authored values)
-        /// once BattleAssetBuilder actually assigns these stats per archetype.</summary>
-        static void RandomizeTestCombatStats(CharacterInstance instance, int seed)
-        {
-            var rng = new System.Random(seed);
-            float Range(float min, float max) => min + (float)rng.NextDouble() * (max - min);
-
-            var stats = instance.rolledStats;
-            stats.critRate += Range(0.05f, 0.20f);
-            stats.critDamage = stats.critDamage > 0f ? stats.critDamage : Range(1.3f, 1.8f);
-            stats.accuracy = Range(0.85f, 1.0f);
-            stats.evasion += Range(0f, 0.15f);
-            instance.rolledStats = stats;
         }
 
         /// <summary>No economy/shop/farm system exists yet to source real starting stock

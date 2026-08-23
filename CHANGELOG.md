@@ -4,13 +4,65 @@ Reverse-chronological history of the `feature/battle-slice` branch. For *current
 state (what's done, what's known-broken, what's next) see `PROJECT-README.md` instead
 — this file is a record of what shipped when, not a living status doc.
 
-## Unreleased — M9-M14 (2026-08-19)
+## Unreleased — M9-M17 (2026-08-23)
 
 Not yet tagged or cut as a release. Depth on the battle slice: a real roster bench,
 a per-unit skill system, the tooling to stop authored content from silently failing
 to ship, a first-pass MP economy plus FMV playback components, battle potions,
-standard JRPG status effects, an explicit Android-first platform priority, and now a
-distinct map-2 enemy roster with the AI to actually use its kit.
+standard JRPG status effects, an explicit Android-first platform priority, a distinct
+map-2 enemy roster with the AI to actually use its kit, and a full "modern AAA
+turn-based" combat layer on top.
+
+*(M15 and M16 landed without a CHANGELOG entry at the time — added below alongside
+M17 so this file stops at the same milestone `PROJECT-README.md` does. Their full
+writeups live in that file's "What changed from the original design", items 12-14.)*
+
+- **M17 — Map-2 elements/ultimates, the first authored stat pass.** Closed two gaps
+  M16 named itself. Map 2's Rotfang/Deadeye/Hexweaver are built by `BuildCustomEnemy`,
+  a code path that hardcoded `ElementType.Neutral` and never set `ultimateSkill`, so
+  M16's whole element/ultimate layer silently skipped the only fight with a distinct
+  roster. They now carry Earth/Lightning/Fire -- picked as a set against the party's
+  Fire/Wind/Water rather than for flavour -- plus one ultimate each (Plague Maw, Storm
+  Volley, Blood Chorus), built to the same rules as the archetype ultimates. Side
+  effect: all 5 elements of the weakness cycle are now on real built content, where
+  through M16 only Fire/Wind/Water were. Separately, `BattleWorld
+  .RandomizeTestCombatStats` -- M16's explicitly temporary "spray a random roll on
+  every unit at battle boot so crits and misses are visible at all" hack -- is deleted,
+  replaced by five authored `CombatStats` profiles (Bruiser/Skirmisher/Caster/Brute/
+  Sniper) applied to the assets via `StatBlock.WithCombatStats`. Accuracy stays high
+  and evasion low by design, so the worst matchup in the game still lands ~82% of the
+  time; a new test walks all 132 attacker/target pairs to hold that floor. 6 new
+  EditMode tests (89 total). `ContentVersion` bumped to 9 -- the assets rebuild
+  automatically on the next interactive Editor open, and until then 5 asset-content
+  tests fail by design, naming exactly what's missing.
+
+- **M16 — Elements, crit/accuracy, Break, ultimate gauge, combat HUD.** A full
+  "modern AAA turn-based" mechanics pass, built as a testable math/data layer first
+  (`ElementChart.cs`, `DamageCalculator` crit/hit-chance) then the HUD to see it.
+  7 elements plus Neutral on a 5-way weakness cycle with a Light/Dark rivalry; crit
+  rate/damage and accuracy/evasion as new `StatBlock` fields, each with a fallback
+  chosen so no pre-M16 content broke; a Break stagger status (take 30% of max HP
+  since your last turn and lose your next one, taking bonus damage while down); and
+  an ultimate gauge with one authored ultimate per archetype (Inferno Blade/Gale
+  Storm/Tidal Renewal), gauge-gated rather than MP-gated. HUD: a turn-order strip, a
+  break-progress bar, sprite darkening while broken, a colour-coded "U" action
+  button, and a Unit Stats inspector. Two real bugs found in live play and fixed: an
+  unbounded FMV-clip wait that could soft-lock the entire battle (now capped at 5
+  real seconds), and a Unity IMGUI bug where the ultimate button's own animated
+  `GUI.backgroundColor` was eating its clicks (fixed by moving the animation to a
+  non-interactive layer behind it).
+
+- **M15 — Centre-stage-only movement, body/skill-effect decoupling.** Reworked how a
+  turn's action reads after two rounds of the project owner watching it play and
+  redirecting: every action now moves only the acting unit to a shared centre-stage
+  mark and the target never moves, replacing both M10's melee walk-up-to-target and an
+  intermediate "attacker crosses onto the target's side" attempt that didn't survive
+  first contact with real play. Separately, a character's body animation (its FMV clip)
+  and a skill's visual identity are now fully decoupled -- every Skill Move plays the
+  caster's own swing/cast clip (previously basic-attack-only), while a new optional
+  `SkillEffect` asset carries the skill-specific impact visual, ahead of the project
+  owner's planned "skill orb" system. No `ContentVersion` bump: `SkillDefinition
+  .effect` is a new optional field defaulting to null on every existing asset.
 
 - **M14 — `impactFrames` re-fix, map-2 enemy roster, offensive-Skill-Move AI.** The
   M12 `impactFrames` hand-fix regressed to the exact same corrupted values on the very

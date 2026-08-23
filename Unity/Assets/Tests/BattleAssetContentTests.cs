@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
@@ -352,6 +353,139 @@ namespace Game.Tests
                 Assert.IsNotNull(def.ultimateSkill, $"{unitId} has no ultimateSkill -- the U button can never enable.");
                 Assert.AreEqual(element, def.ultimateSkill.element, $"{unitId}'s ultimate should be {element}-elemental like the character.");
                 Assert.AreEqual(0, def.ultimateSkill.mpCost, $"{unitId}'s ultimate should be free (gauge-gated, not MP-gated).");
+            }
+        }
+
+        // -- M17: map-2 elements/ultimates and the authored combat-stat pass ----------
+
+        /// <summary>M16 authored elements and ultimates through the shared-archetype loop
+        /// only, so map 2's BuildCustomEnemy roster stayed Neutral with no ultimate --
+        /// this is the test that would catch a future enemy added down that same path and
+        /// silently left out of the combat systems again. The exact elements are
+        /// BattleAssetBuilder.Map2EnemyElement's call (see its doc for why these three).</summary>
+        static readonly (string unitId, ElementType element)[] Map2Elements =
+        {
+            ("enemy_rotfang", ElementType.Earth),
+            ("enemy_deadeye", ElementType.Lightning),
+            ("enemy_hexweaver", ElementType.Fire),
+        };
+
+        [Test]
+        public void Map2Enemies_HaveTheirOwnNonNeutralElement()
+        {
+            foreach (var (unitId, element) in Map2Elements)
+            {
+                var def = Load(unitId);
+                Assert.AreEqual(element, def.element, $"{unitId} should be {element}-elemental, not the Neutral default.");
+                Assert.AreEqual(element, def.standardSkill.element,
+                    $"{unitId}'s BA should carry the caster's own element, same rule the archetypes follow.");
+            }
+        }
+
+        /// <summary>Same three assertions the archetype ultimates get -- exists, matches
+        /// the caster's element, gauge-gated rather than MP-gated. These matter more in
+        /// practice than the player-side ones: BattleController.ChooseAutoSkill fires an
+        /// ultimate for any unit that has one, so these are what make a plain auto-battle
+        /// of map 2 show off the system with no manual input.</summary>
+        [Test]
+        public void Map2Enemies_HaveAnUltimateMatchingTheirOwnElement()
+        {
+            foreach (var (unitId, element) in Map2Elements)
+            {
+                var def = Load(unitId);
+                Assert.IsNotNull(def.ultimateSkill, $"{unitId} has no ultimateSkill -- it can never fire one in auto mode.");
+                Assert.AreEqual(element, def.ultimateSkill.element, $"{unitId}'s ultimate should be {element}-elemental like the character.");
+                Assert.AreEqual(0, def.ultimateSkill.mpCost, $"{unitId}'s ultimate should be free (gauge-gated, not MP-gated).");
+                Assert.AreNotEqual(def.standardSkill, def.ultimateSkill, $"{unitId}'s ultimate must not just be its BA.");
+            }
+        }
+
+        /// <summary>The point of map 2's element picks: a party of Fire/Wind/Water meets
+        /// three enemies at three genuinely different multipliers, rather than everyone
+        /// trading 1x. Guards against a future retune quietly flattening the encounter --
+        /// e.g. giving every map-2 enemy the same element.</summary>
+        [Test]
+        public void Map2Roster_IsElementallyDistinct()
+        {
+            var elements = Map2Elements.Select(e => Load(e.unitId).element).ToList();
+            CollectionAssert.AllItemsAreUnique(elements,
+                "map 2's three enemies should not share an element -- that's what makes the encounter read.");
+            CollectionAssert.DoesNotContain(elements, ElementType.Neutral);
+        }
+
+        /// <summary>All 5 elements of ElementChart's cycle should be live on real built
+        /// content, not just the Fire/Wind/Water M16 gave the archetypes -- otherwise
+        /// Earth and Lightning are chart entries no battle can ever exercise. Light/Dark
+        /// are deliberately excluded: nothing carries them yet, so they'd be a no-op 1x
+        /// either way (see ElementChart's own doc).</summary>
+        [Test]
+        public void EveryCycleElement_IsCarriedBySomeBuiltCharacter()
+        {
+            // new HashSet<>(...) rather than ToHashSet(): the latter is .NET Standard
+            // 2.1, and this project is pinned to 2.0 (same trap as Dictionary
+            // .GetValueOrDefault, see BattleAssetBuilder.GetOrEmpty).
+            var live = new HashSet<ElementType>(
+                AllUnitIds.Concat(Map2Elements.Select(e => e.unitId)).Select(id => Load(id).element));
+
+            foreach (var element in new[] { ElementType.Fire, ElementType.Wind, ElementType.Earth,
+                                            ElementType.Lightning, ElementType.Water })
+                CollectionAssert.Contains(live, element,
+                    $"no built character is {element}-elemental, so ElementChart's {element} row is unreachable in play.");
+        }
+
+        static readonly string[] EveryCombatantId =
+        {
+            "player_melee", "player_ranged", "player_support",
+            "enemy_melee", "enemy_ranged", "enemy_support",
+            "player_bench_melee", "player_bench_ranged", "player_bench_support",
+            "enemy_rotfang", "enemy_deadeye", "enemy_hexweaver",
+        };
+
+        /// <summary>M17's balance pass: every unit's crit/accuracy/evasion are now
+        /// authored on the asset (CombatStats' profiles), where through M16 they were all
+        /// 0 on disk and BattleWorld.RandomizeTestCombatStats sprayed a random roll over
+        /// them at battle start. That helper is deleted, so a unit that comes back from
+        /// this test with 0s is a unit whose crit and miss systems are silently inert --
+        /// exactly the failure mode the randomizer was papering over.</summary>
+        [Test]
+        public void EveryCombatant_HasAuthoredCritAndAccuracyStats()
+        {
+            foreach (var unitId in EveryCombatantId)
+            {
+                var s = Load(unitId).baseStats;
+                Assert.Greater(s.critRate, 0f, $"{unitId} can never crit -- critRate is still the 0 default.");
+                Assert.Less(s.critRate, 1f, $"{unitId} crits on every hit.");
+                Assert.GreaterOrEqual(s.critDamage, 1f, $"{unitId}'s crit would deal *less* than a normal hit.");
+                Assert.Greater(s.accuracy, 0f,
+                    $"{unitId}'s accuracy is still the 0 default -- DamageCalculator.HitChance silently treats that as 'always hits'.");
+                Assert.LessOrEqual(s.accuracy, 1f, $"{unitId}'s accuracy is above 100%.");
+                Assert.GreaterOrEqual(s.evasion, 0f, $"{unitId} has negative evasion.");
+            }
+        }
+
+        /// <summary>The one number the whole accuracy pass hangs on: no matchup anywhere
+        /// in the game may miss more than a fifth of the time. A turn-based battle where
+        /// turns regularly evaporate reads as broken rather than tactical, so accuracy
+        /// stays high and evasion low (see CombatStats' doc). This is a design invariant,
+        /// not a formula check -- it fails the moment someone retunes one unit's evasion
+        /// up without looking at what it does to the least accurate attacker.</summary>
+        [Test]
+        public void NoMatchupInTheGame_MissesMoreThanAFifthOfTheTime()
+        {
+            const float floor = 0.8f;
+            var units = EveryCombatantId
+                .Select(id => (id, unit: BattleTestHelpers.MakeUnit(
+                    Load(id).baseStats, Faction.Player, column: 1, facingRight: true)))
+                .ToList();
+
+            foreach (var (attackerId, attacker) in units)
+            foreach (var (targetId, target) in units)
+            {
+                if (attackerId == targetId) continue;
+                float chance = DamageCalculator.HitChance(attacker, target);
+                Assert.GreaterOrEqual(chance, floor,
+                    $"{attackerId} (accuracy {attacker.Stats.accuracy:0.00}) only lands {chance:P0} of its hits on "
+                    + $"{targetId} (evasion {target.Stats.evasion:0.00}) -- floor is {floor:P0}.");
             }
         }
     }

@@ -79,6 +79,19 @@ an unbounded FMV-clip wait that could soft-lock the whole battle, and a Unity IM
 issue where the ultimate button's own animated colour was eating its clicks. See item 13
 below and [[Battle-System]].
 
+M17 (this session) finishes M16's combat pass everywhere it didn't reach. Map 2's
+Rotfang/Deadeye/Hexweaver are built by `BuildCustomEnemy`, a separate code path that
+hardcoded `ElementType.Neutral` and a null `ultimateSkill`, so the whole element and
+ultimate layer was invisible on the only fight with distinct enemies -- they now carry
+**Earth/Lightning/Fire** and one ultimate each (**Plague Maw**, **Storm Volley**, **Blood
+Chorus**), which also means all 5 elements of the weakness cycle are finally live in an
+actual battle instead of just Fire/Wind/Water. Alongside it, the **first real
+crit/accuracy/evasion pass**: `BattleWorld.RandomizeTestCombatStats` -- M16's explicitly
+temporary "spray a random roll on every unit at battle boot so the systems are visible at
+all" hack -- is deleted, replaced by five authored `CombatStats` profiles on the assets
+themselves. See item 14 below and [[Combat-Systems]]. **These assets need one interactive
+Editor rebuild before they're live** -- see "Known gaps."
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -503,12 +516,13 @@ below and [[Battle-System]].
       Gauge-gated, not MP-gated -- `ResolveAction` drains the gauge to 0 for whichever
       skill `== Definition.ultimateSkill` instead of spending MP. Auto mode always uses
       it the instant it's ready. `ContentVersion` bumped to 8.
-    - **Random test stats.** No character has real crit/accuracy numbers authored yet
-      (a real balance pass is future work), so `BattleWorld.RandomizeTestCombatStats`
-      rolls a random-but-playable value per unit at battle boot -- mutates each unit's
-      own private `CharacterInstance`, never the shared `CharacterDefinition` asset, so
-      it can't leak state across units or battles. Explicitly temporary, per its own doc
-      comment, until real content replaces it.
+    - **Random test stats.** No character had real crit/accuracy numbers authored at
+      this point (a real balance pass was future work), so
+      `BattleWorld.RandomizeTestCombatStats` rolled a random-but-playable value per unit
+      at battle boot -- mutating each unit's own private `CharacterInstance`, never the
+      shared `CharacterDefinition` asset, so it couldn't leak state across units or
+      battles. Explicitly temporary per its own doc comment; **replaced in M17 by
+      authored `CombatStats` profiles and deleted** (item 14 below).
     - **HUD additions.** A turn-order strip under the title (small battle-sprite icons,
       right-to-left, rightmost = next to act, numbered 1-7 -- refined from an initial
       centre-fan layout after the project owner asked for a clearer direction). A "U"
@@ -532,6 +546,73 @@ below and [[Battle-System]].
       `DamageCalculatorTests.cs` (crit, elemental weakness/resist, hit chance) and
       `StatusEffectTests.cs` (Break). `BattleAssetContentTests.cs` gains 2 tests
       confirming every archetype's element and ultimate actually landed on disk.
+14. **Map-2 elements/ultimates and the first real stat pass -- M17.** Two of M16's own
+    named gaps, closed. Both are content-layer changes: `ContentVersion` bumped to 9, no
+    new systems.
+    - **Map 2 joins the combat systems.** `BuildCustomEnemy` -- the path M14 added for
+      enemies that aren't archetype reskins -- hardcoded `def.element =
+      ElementType.Neutral` and never set `ultimateSkill` at all, so M16's whole element
+      and ultimate layer silently skipped the only fight in the game with a distinct
+      roster. It now takes both as parameters. New `BattleAssetBuilder.Map2EnemyElement`
+      assigns **Rotfang = Earth, Deadeye = Lightning, Hexweaver = Fire**, picked as a set
+      rather than for flavour: the party is Fire/Wind/Water, so Rotfang is weak to
+      Sable's Wind and Hexweaver to Linnet's Water, while Deadeye is deliberately the one
+      enemy nothing in the party answers elementally -- it's strong *into* Linnet in both
+      directions (Lightning beats Water), reading as "the sniper that specifically
+      threatens your healer" and paying for it with the roster's lowest HP and defense.
+      Side effect worth naming: **all 5 elements of the cycle are now carried by real
+      built content**, where through M16 only Fire/Wind/Water were, making Earth's and
+      Lightning's rows in `ElementChart` reachable in play for the first time. Light/Dark
+      are still unused by any content (a deliberate no-op 1x either way).
+    - **Three enemy ultimates**, built exactly like the archetype ones (mpCost 0,
+      gauge-gated by `ResolveAction`, element matching the caster): **Plague Maw**
+      (Rotfang/Earth, heavy single hit + a stronger Poison), **Storm Volley**
+      (Deadeye/Lightning, full-party AoE + Attack Down, reusing Gale Storm's own barrage
+      pattern asset), **Blood Chorus** (Hexweaver/Fire, full-side heal + Regen, mirroring
+      Tidal Renewal). These matter more in practice than the player-side ultimates for
+      *seeing* the system work: `ChooseAutoSkill` already fires an ultimate for any unit
+      that has one, so a plain auto-battle of map 2 now throws enemy ultimates with no
+      manual input at all. Storm Volley in particular is the clearest read available on
+      "elements are live" -- one cast hits all three party members at three different
+      multipliers. Plague Maw is authored at power 2.6 rather than Inferno Blade's 3.2 on
+      purpose: Rotfang already has the game's highest attack (26) and biggest crit
+      multiplier (1.80), and at 3.2 a crit into a Broken Kestrel exceeds her entire HP
+      bar -- an enemy ultimate that deletes a full-health front-liner outright is a coin
+      flip, not a difficulty spike.
+    - **Authored crit/accuracy/evasion, replacing the random rolls.**
+      `BattleWorld.RandomizeTestCombatStats` is **deleted**. M16 shipped it as an
+      explicitly temporary hack -- every `StatBlock` on disk had all four combat fields
+      at 0, so it sprayed a seeded random roll over each unit at battle boot purely so
+      crits and misses would be visible at all. The real numbers now live on the assets,
+      as five named profiles in a new `CombatStats` struct (`Data/Core/StatBlock.cs`,
+      alongside `StatBlock` itself) applied via `StatBlock.WithCombatStats`: **Bruiser**
+      (melee archetype), **Skirmisher** (ranged), **Caster** (support + Hexweaver),
+      **Brute** (Rotfang), **Sniper** (Deadeye).
+    - **The shape of that pass**, since the numbers themselves are arbitrary in this
+      project's usual sense: accuracy sits high (0.92-0.98) and evasion low (0.02-0.10),
+      so the single worst matchup in the game -- Rotfang's 0.92 into Deadeye's 0.10 --
+      still lands ~82% of the time. A turn-based battle where a fifth of your turns
+      evaporate reads as broken rather than tactical, so misses are rare punctuation, not
+      a resource cost you plan around. Crit rate is where units actually differ (0.08 on
+      a caster up to 0.25 on Deadeye), with crit damage moving inversely -- the brute
+      crits least often and hardest. Crit fields survive `StatBlock`'s `*` and
+      `RollVariance` untouched (they're percentages, not scaling quantities), so tier and
+      level growth don't drift them.
+    - **`BattleContentGuard`'s content probe now covers all of this too.** Its
+      read-only "are the assets on disk actually wrong right now" check gained the same
+      three assertions -- a Neutral element, a null `ultimateSkill`, unauthored
+      crit/accuracy. All three are the failure mode this guard was built for: content
+      that looks fine (the battle runs, nothing errors) while silently never triggering
+      the system it belongs to, exactly like M10's empty `skillMoves`. The version stamp
+      alone would have caught M17's own rebuild; this catches a later git revert of
+      `Resources/Battle`, or a half-failed build.
+    - New tests: 6 in `BattleAssetContentTests.cs` -- map-2 elements, map-2 ultimates,
+      elemental distinctness across the map-2 roster, cycle-element coverage across all
+      built content, authored combat stats on all 12 combatants, and
+      `NoMatchupInTheGame_MissesMoreThanAFifthOfTheTime`, which walks all 132
+      attacker/target pairs and asserts `HitChance >= 0.8`. That last one is the whole
+      accuracy design encoded as a test: it fails the moment someone retunes one unit's
+      evasion up without checking what it does to the least accurate attacker.
 
 ## Roster
 
@@ -601,6 +682,7 @@ costs the turn.
 | M14 | `impactFrames` re-fix (authored in C#), map-2-only enemy roster (Rotfang/Deadeye/Hexweaver), offensive-Skill-Move AI | *(not yet tagged)* |
 | M15 | Centre-stage-only movement (crossover attempts reverted after live testing), body animation/skill effect decoupling (`SkillEffect`) | *(not yet tagged)* |
 | M16 | Elements/weakness chart, crit/accuracy, Break status, ultimate gauge + one skill per archetype, turn-order strip, unit stats HUD, clip-hang + IMGUI click-eating fixes | *(not yet tagged)* |
+| M17 | Map-2 enemy elements + ultimates (the `BuildCustomEnemy` gap), authored crit/accuracy/evasion profiles replacing the temporary random rolls | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -659,17 +741,29 @@ potion slots).
   `FarmAutoSetup`'s `[InitializeOnLoad]` guard only re-applies once per Editor session
   (`SessionState`-gated, unlike `BattleContentGuard`'s content check, which re-fires on
   every script recompile) -- resolves automatically the next time the Editor restarts.
-- **Map 2's custom enemies (Rotfang/Deadeye/Hexweaver) have no element or ultimate
-  (M16).** `BuildCustomEnemy` is a separate code path from the shared-archetype loop
-  that authors `ultimateSkillByArchetype`/per-archetype elements, so these three were
-  out of scope for this pass -- they still default to Neutral with no ultimate. Cheap
-  to add later the same way the archetype ultimates were: a small hand-authored
-  `SkillDefinition` per enemy plus an element assignment in `BuildCustomEnemy`.
-- **No real crit/accuracy/evasion balance pass.** `BattleWorld.RandomizeTestCombatStats`
-  is explicitly a temporary testing aid (see its own doc comment) -- every character's
-  authored `baseStats` still has these fields at 0; the random values only exist at
-  runtime, per-battle, per-unit. A real balance pass should replace this with actual
-  authored numbers in `BattleAssetBuilder`.
+- **M17's content is written but not yet built -- one interactive Editor session away.**
+  The code is committed and compiles clean, but `Resources/Battle/*` on disk is still
+  content v8: map 2's enemies are still Neutral with no ultimate, and every `StatBlock`
+  still has crit/accuracy/evasion at 0. `ContentVersion` is now 9, so
+  `BattleContentGuard` rebuilds automatically the next time the project is opened in a
+  real Editor -- nothing to click. **Until that happens, 5 of the 89 EditMode tests fail
+  by design** (`Map2Enemies_HaveTheirOwnNonNeutralElement`,
+  `Map2Enemies_HaveAnUltimateMatchingTheirOwnElement`, `Map2Roster_IsElementallyDistinct`,
+  `EveryCycleElement_IsCarriedBySomeBuiltCharacter`,
+  `EveryCombatant_HasAuthoredCritAndAccuracyStats`) -- that is exactly what
+  `BattleAssetContentTests` is for, and the failure messages name the missing content
+  directly. This can't be fixed headlessly: rebuilding the assets means
+  `AssetDatabase.CreateAsset`/`SaveAssets()` after a script change, which is the
+  documented corruption path below, and M17 adds 3 brand-new `SkillDefinition` assets
+  (the enemy ultimates), i.e. the highest-risk version of it.
+- **M17's numbers are a first pass by reasoning, not by play.** The crit/accuracy/evasion
+  profiles (`CombatStats`) and the 3 enemy ultimates were tuned against the stat tables
+  and the damage formula, not against a real battle -- `Plague Maw`'s power was already
+  cut from 3.2 to 2.6 on that basis alone (a crit into a Broken Kestrel exceeded her
+  whole HP bar). Worth watching in the first live map-2 fight specifically: whether
+  Blood Chorus makes Hexweaver's side unkillable (a ~48 HP heal on all three, roughly
+  half a bar each), and whether Storm Volley's 1.5x into Linnet plus Deadeye's 0.25 crit
+  rate is too much burst on the healer.
 - **M16's two live-found bugs (the FMV-clip hang, the IMGUI click-eating button) were
   fixed by defensive/structural changes, not a fully confirmed root cause for the
   first one.** The clip-player timeout (5 real seconds) guarantees the turn always
@@ -829,17 +923,28 @@ potion slots).
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play map 2 and confirm the status-effect system for real, now with M16's own
-   Break/crit/elements in the mix too.** Fight Rotfang/Deadeye/Hexweaver, confirm
-   Poison/Attack Down/Defense Down/Stun are all visibly doing something, that auto mode
-   reaches for offensive Skill Moves and ultimates, and that Break/crit/elemental
-   weakness are all landing correctly against a second, different enemy roster.
-3. **Give map 2's custom enemies (Rotfang/Deadeye/Hexweaver) an element and ultimate
-   (M16 gap).** They're on a separate `BuildCustomEnemy` code path that M16 didn't
-   touch -- still Neutral, no ultimate. See "Known gaps."
-4. **A real crit/accuracy/evasion balance pass**, replacing `BattleWorld
-   .RandomizeTestCombatStats`'s temporary random rolls with actual authored numbers in
-   `BattleAssetBuilder`. See "Known gaps."
+2. **Open the Editor once so M17's content actually builds, then play map 2.** These
+   are one step now, not two: opening the project rebuilds `Resources/Battle` to content
+   v9 automatically (`BattleContentGuard`, no menu click needed), which is also what
+   turns the last 5 red EditMode tests green. Then fight Rotfang/Deadeye/Hexweaver and
+   confirm the whole stack against a second roster at once -- Poison/Attack Down/Defense
+   Down/Stun visibly doing something, auto mode reaching for offensive Skill Moves,
+   Break/crit landing, and now M17's own additions: Sable hitting Rotfang for 1.5x,
+   Deadeye's Storm Volley hitting all three party members at three different multipliers,
+   and Hexweaver's Blood Chorus healing its own side. Auto mode alone shows all of this
+   -- `ChooseAutoSkill` fires an ultimate the instant a gauge fills, on either faction --
+   so this needs a play-through, not manual input.
+3. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
+   specific things to watch (Blood Chorus sustain, Storm Volley burst on the healer).
+   The profiles are all in one table (`CombatStats` in `Data/Core/StatBlock.cs`) and the
+   ultimates are 3 adjacent lines in `BuildMap2EnemySkills`, so a retune is a one-file
+   edit plus a rebuild.
+4. **Screenshot the manual-mode-only HUD for the wiki.** `Combat-Systems.md` has real
+   in-game screenshots for everything auto mode surfaces (roster bars, turn-order strip)
+   but nothing for the manual-only pieces -- the colour-coded BA/SM/U/R/S/I row and the
+   Unit Stats card -- because synthetic clicks can't reach the standalone build from this
+   environment. Two screenshots from a real play session would fill the last gap in that
+   page.
 5. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
    the map's generic impact FX, since no skill-specific effect exists yet -- the hook
    (`SkillDefinition.effect`) is ready the moment art/effect sheets are available, no
@@ -860,6 +965,9 @@ potion slots).
 10. More enemy variety beyond map 2's 3, if the project owner wants it -- the
     `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
     borrow art from an existing `CharacterDefinition` (no new art generation needed).
+    Since M17 that path also takes an element and an ultimate as required parameters, so
+    a new enemy can't silently ship outside the combat systems the way these three
+    originally did.
 11. **Bigger meta-systems from the project owner's own "modern AAA" list, still
     unstarted**: boss phase/pattern triggers, an equipment/loadout system (a stats
     screen exists now via M16's Unit Stats panel, but nothing equips gear yet), an
