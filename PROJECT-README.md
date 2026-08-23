@@ -105,6 +105,15 @@ Success ends the battle in a new third outcome, `Escaped` -- not a defeat, but n
 progress either: no "Next Battle" button, which is the whole cost of the action and the
 only thing separating it from M18's skip. See item 16 below.
 
+M20 (this session) gives escaping and quitting something to actually be *about*. A new
+**Q** (Quit) action leaves a fight instantly and always works; **F** (Flee) still rolls.
+The difference is the haul: enemies now drop **EXP and materials**, escaping banks them,
+quitting bins them. Both restore the party to the HP/MP it walked in with, and both land
+at a new **camp screen** -- next battle, rest, stat overview, leave dungeon. Quitting is
+free when you've just started and ruinous once you're deep, which is the whole point.
+Also lands `Tools/typecheck.sh`, which compiles the project without taking Unity's
+lock -- see item 17 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -706,6 +715,68 @@ only thing separating it from M18's skip. See item 16 below.
       so the real worst case is 37.5%, and MinChance is a guard against a future retune
       rather than a working floor. Plus one content test that neither shipped map forbids
       escape.
+17. **The escape/quit economy and the camp screen -- M20.** M19 shipped a Flee button
+    with nothing behind it: leaving a fight cost you nothing but the fight, so "escape"
+    and "quit" would have been two words for the same button. The project owner's spec
+    closed that -- escaping keeps what the fight earned, quitting forfeits it, and both
+    return the party to its entry stats.
+    - **`BattleRewards.cs`** (new, pure C#): EXP plus three material kinds, accrued per
+      enemy killed. Both death paths credit it -- the killing blow and the poison tick --
+      so *how* something died never changes what it pays.
+    - **This is knowingly a parallel, throwaway material model, and that's the most
+      important thing to know about it.** `Game.Data` already holds the real one:
+      `MaterialDefinition` (tier/age/island/rarity/category, sell value, stack size) and
+      `DropTable` (guaranteed + chance entries, unlock gating, dungeon level), designed
+      from FOUNDATION.md and never wired to battle. Using it properly means authoring
+      `Mat_*`/`Drops_*` ScriptableObjects plus a per-enemy table reference -- an asset
+      build, which this environment can only do through an interactive Editor session,
+      and which would have blocked M20 outright. So drops are **derived from the
+      dropper's own stats** instead and the three `MaterialKind` values are stand-ins.
+      When the battle/economy boundary gets built, `BattleRewards` should be **replaced**
+      by `DropTable` lookups, not extended. The seam is deliberately narrow: `Award()` is
+      the only thing that decides what a kill is worth.
+    - **Entry-state restore.** `BattleWorld` snapshots every player-side unit's HP/MP at
+      construction -- after between-map MP recovery, so it's the state you actually walk
+      in with. `RestoreEntryState()` puts it back, and **deliberately un-kills anyone who
+      died**: a withdrawal undoes the fight, and a fight you undid didn't kill anyone.
+      Status effects and ultimate charge clear for the same reason.
+    - **`ChosenAction.Quit` / `BattleOutcome.Quit`.** Both exits funnel through one
+      `LeaveBattle(outcome, keepRewards)`, so the entire design is a single bool. The
+      action row shows both stakes side by side -- `F: flee 65%, keep haul  |  Q: quit,
+      lose 34 EXP, 2 Hide` -- because a choice you can only evaluate after committing
+      isn't a choice.
+    - **Undo is closed off once you've left** (`HasLeftBattle`). Escaping and quitting
+      mutate state `BattleHistory` doesn't model -- restored HP/MP, cleared statuses, a
+      banked or binned ledger -- so rewinding into a battle you've walked out of would
+      rebuild a half-correct world. Victory and defeat are unaffected.
+    - **`CampScreen.cs`** (new): the four things the project owner asked for -- which
+      battle is next and who's in it (read from the map's own placements, not
+      hardcoded), Rest, a stat overview, and Leave dungeon. Booted by `BattleBootstrap`
+      into the same scene rather than a scene of its own, because `BootMap` already tore
+      the scene down and rebuilt it, and `Battle.unity` isn't even in the build settings.
+      **Rest costs 3 materials** -- the only sink in the game, and the thing that makes
+      escaping-with-your-mats buy something concrete.
+    - **Leaving a fight does not clear it.** Camp offers the *same* battle again, since
+      withdrawing from a fight isn't beating it. "Leave dungeon" has no home to go to yet
+      (`Farm.unity` exists and is the only scene in the build settings, but nothing
+      connects the two), so it currently restarts the run and says so in the log.
+    - **A defeat loses the haul too**, same as quitting -- `Pending` is only banked on a
+      victory or a successful escape. Not something the project owner specified; it's the
+      reading that makes the escape decision matter under pressure.
+    - New tests: `BattleRewardsTests.cs` (9) on the ledger, plus 2 in `BattleWorldTests`
+      on entry-state restore covering both the active party and the bench.
+18. **`Tools/typecheck.sh` -- M20.** Compiles every C# source in the project **without
+    opening or locking Unity**, by driving Unity's own bundled Roslyn compiler at the
+    sources with Unity's reference assemblies. This closes a real hole: `-runTests` can't
+    run while an Editor has the project open, and M19 and M20 were both written entirely
+    blind during a long playtest session because of it. Now the compiler is always
+    available. It does **not** run tests -- assertions can still fail, and anything
+    needing `Resources/` or a live scene is untouched -- so `-runTests` is still the real
+    gate. Verified to actually fail on a deliberate error, not just print "clean". The
+    fiddly part is corelibs: Unity's engine DLLs are netstandard2.1 but Unity's NUnit is
+    net472 and resolves `[Test]` through mscorlib; referencing either alone fails and
+    referencing both collides, so it uses netstandard.dll plus the netfx *shim* mscorlib,
+    which type-forwards instead of defining.
 
 ## Roster
 
@@ -778,6 +849,7 @@ costs the turn.
 | M17 | Map-2 enemy elements + ultimates (the `BuildCustomEnemy` gap), authored crit/accuracy/evasion profiles replacing the temporary random rolls | *(not yet tagged)* |
 | M18 | Battle skip (`N` / Pause menu) -- forfeit the current fight, carry the party to the next stage | *(not yet tagged)* |
 | M19 | Escape/flee -- speed-based chance with per-failure escalation, `Escaped` outcome, `forbidEscape` map hook | *(not yet tagged)* |
+| M20 | Escape/quit economy (EXP + materials, entry-stat restore), camp screen, `Tools/typecheck.sh` | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -796,7 +868,8 @@ all tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
 list; tap again to close it), **U** (ultimate, needs a full gauge), **R** (Reposition),
 **S** (Sub), **I** (opens the potion list -- Hp/Mp/Multi, tap again to close it), **F**
 (Flee, M19 -- rolls against the live odds shown under the row, and costs the turn either
-way) -- then click a highlighted target on the field (BA/SM/Reposition/Item) or pick from
+way), **Q** (Quit, M20 -- leave the fight instantly, forfeiting everything it earned)
+-- then click a highlighted target on the field (BA/SM/Reposition/Item) or pick from
 the popup (SM's list, Sub's bench, Item's potion slots). U and F resolve immediately with
 no target pick.
 
@@ -851,12 +924,25 @@ no target pick.
   the "interactive rebuilds are safe, headless ones aren't" hypothesis, and a fairly
   strong one -- this pass created new ScriptableObjects after a script change, the exact
   shape that corrupted everything in M9.
-- **M18's battle skip is written but not yet compiled or tested.** It landed while the
-  project owner's Editor was open *and in Play mode*, so Unity hasn't imported the
-  changed scripts yet and batchmode can't run alongside it (shared lockfile). Needs one
-  `-runTests` pass once the Editor is closed -- expected 92 tests, all green. Nothing
-  about it is risky (no asset changes, no new systems), it just hasn't been through a
-  compiler yet.
+- **M18 is verified live; M19 and M20 compile but have never been run.** M18's skip was
+  picked up by the project owner's own Editor session (no compile errors, and the log
+  shows map 1 booting then map 2 booting seconds later with no exceptions -- the skip
+  working). M19 and M20 landed while that Editor was open, so `-batchmode -runTests`
+  could not run at all (shared lockfile) and the queued attempt timed out after 45
+  minutes. They are **type-checked clean** via `Tools/typecheck.sh` (item 18 above) --
+  which is genuinely new coverage, not a fudge: it catches every compile error across
+  Game.Data/Game.Battle/Game.Tests. But **type-checking is not testing.** ~113 tests
+  including 11 new ones have never executed, and nothing in M19 or M20 has been played.
+  One `-runTests` pass once Unity is closed is the outstanding gate.
+- **M20's materials are a parallel model to the one the project already has.** See item
+  17 -- `MaterialDefinition`/`DropTable` exist in `Game.Data`, fully designed, unwired.
+  `BattleRewards` should be *replaced* by them rather than grown, and `Award()` is the
+  single seam where that swap happens. Flagged loudly because a placeholder economy that
+  quietly becomes the real one is how projects end up with two of everything.
+- **Camp's "Leave dungeon" has nowhere to go.** `Farm.unity` exists and is the only
+  scene in the build settings, but nothing connects the battle slice to it, so leaving
+  restarts the run and logs why. That connection is the farm/battle boundary the
+  README's last "Natural next steps" item is about.
 - **M17's numbers are a first pass by reasoning, not by play.** The crit/accuracy/evasion
   profiles (`CombatStats`) and the 3 enemy ultimates were tuned against the stat tables
   and the damage formula, not against a real battle -- `Plague Maw`'s power was already

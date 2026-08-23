@@ -3,6 +3,7 @@ using System.Linq;
 using NUnit.Framework;
 using Game.Data;
 using Game.Battle;
+using UnityEngine;
 using static Game.Tests.BattleTestHelpers;
 
 namespace Game.Tests
@@ -80,6 +81,58 @@ namespace Game.Tests
             Assert.AreEqual(DummyStats.hp, survivors[0].CurrentHp, "the untouched unit should carry over at full HP.");
             Assert.AreEqual(DummyStats.hp - 40, survivors[1].CurrentHp,
                 "the wounded unit should carry its wound forward -- HP deliberately does not recover between maps.");
+        }
+
+        /// <summary>The half of "escape and quit put you back at the stats you had going
+        /// in" that lives in BattleWorld (M20). The snapshot is taken after every unit
+        /// exists and after between-map MP recovery has run, so it's the state the player
+        /// actually walks in with -- not the state they walked out of the last map with.
+        ///
+        /// Restoring deliberately un-kills anyone who died: a withdrawal undoes the
+        /// fight, and a fight you undid didn't kill anyone.</summary>
+        [Test]
+        public void RestoreEntryState_PutsThePartyBackToHowItWalkedIn()
+        {
+            var world = new BattleWorld(mapIndex: 0);
+            var before = world.PlayerUnits.ToDictionary(u => u, u => (u.CurrentHp, u.CurrentMp));
+            Assert.IsNotEmpty(before, "test setup: map 1 should field a party.");
+
+            foreach (var unit in world.PlayerUnits.ToList())
+            {
+                unit.ApplyDamage(unit.Stats.hp);          // everyone dies
+                unit.SpendMp(unit.CurrentMp);             // and burns every point of MP
+                unit.ApplyStatus(StatusEffectType.Poison, 10f, 3);
+                unit.CurrentUltimateCharge = 50;
+            }
+
+            world.RestoreEntryState();
+
+            foreach (var unit in world.PlayerUnits)
+            {
+                Assert.AreEqual(before[unit].CurrentHp, unit.CurrentHp, $"{unit.Definition.displayName}'s HP.");
+                Assert.AreEqual(before[unit].CurrentMp, unit.CurrentMp, $"{unit.Definition.displayName}'s MP.");
+                Assert.IsTrue(unit.IsAlive, "restoring entry HP should bring back anyone who died this battle.");
+                Assert.IsEmpty(unit.StatusEffects, "the fight's status effects shouldn't survive a withdrawal.");
+                Assert.AreEqual(0, unit.CurrentUltimateCharge, "nor should gauge charge built during it.");
+            }
+        }
+
+        /// <summary>The bench is covered by the same snapshot as the active party --
+        /// sub-in/out moves the same BattleUnit objects between the two lists, so a unit
+        /// that was benched at the start and fighting at the end still restores.</summary>
+        [Test]
+        public void RestoreEntryState_CoversTheBenchToo()
+        {
+            var world = new BattleWorld(mapIndex: 0);
+            var benched = world.Bench.FirstOrDefault();
+            Assert.IsNotNull(benched, "test setup: there should be a bench.");
+
+            int hpBefore = benched.CurrentHp;
+            benched.ApplyDamage(30);
+
+            world.RestoreEntryState();
+
+            Assert.AreEqual(hpBefore, benched.CurrentHp);
         }
 
         /// <summary>Map 2 is the last map, so there is nothing to skip *to* from there --

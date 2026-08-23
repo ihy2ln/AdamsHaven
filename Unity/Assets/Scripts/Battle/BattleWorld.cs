@@ -28,6 +28,24 @@ namespace Game.Battle
         /// AllUnits/Bench do -- see the constructor's carryOverInventory parameter.</summary>
         public BattleInventory Inventory { get; }
 
+        /// <summary>EXP and materials banked across the whole run (M20) -- carried
+        /// between maps exactly the way Inventory is, and the thing a successful escape
+        /// protects. Nothing spends it yet except the camp's Rest.</summary>
+        public BattleRewards Banked { get; }
+
+        /// <summary>What *this* battle has earned so far (M20), fresh every map. Banked
+        /// into Banked on a victory or a successful escape; discarded on a quit or a
+        /// defeat. This is the entire substance of the escape-vs-quit decision -- see
+        /// BattleController.LeaveBattle.</summary>
+        public BattleRewards Pending { get; } = new();
+
+        /// <summary>Every player-side unit's HP/MP as it stood when this battle started
+        /// (M20), active and bench alike. Leaving a battle -- escaping or quitting --
+        /// restores it, so a withdrawal costs you the fight's spoils but not the party's
+        /// health. Keyed by the BattleUnit instances themselves, which is safe because
+        /// carry-over reuses the same objects rather than rebuilding them.</summary>
+        readonly Dictionary<BattleUnit, (int hp, int mp)> _entryState = new();
+
         public IEnumerable<BattleUnit> PlayerUnits => AllUnits.Where(u => u.Faction == Faction.Player);
         public IEnumerable<BattleUnit> EnemyUnits => AllUnits.Where(u => u.Faction == Faction.Enemy);
 
@@ -59,8 +77,11 @@ namespace Game.Battle
         /// <param name="carryOverInventory">Same, for the potion slots -- if supplied,
         /// reused as-is (remaining counts and all); if null, freshly seeded with
         /// placeholder starting stock (see SeedPlaceholderInventory).</param>
+        /// <param name="carryOverRewards">Same, for the run's banked EXP/materials (M20).
+        /// Null starts a fresh run with an empty ledger.</param>
         public BattleWorld(int mapIndex = 0, IReadOnlyList<BattleUnit> carryOverPlayer = null,
-            IReadOnlyList<BattleUnit> carryOverBench = null, BattleInventory carryOverInventory = null)
+            IReadOnlyList<BattleUnit> carryOverBench = null, BattleInventory carryOverInventory = null,
+            BattleRewards carryOverRewards = null)
         {
             MapIndex = Mathf.Clamp(mapIndex, 0, MapCount - 1);
             Map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{MapIndex + 1}");
@@ -136,6 +157,36 @@ namespace Game.Battle
             WarnOnStaleContent();
 
             Inventory = carryOverInventory ?? SeedPlaceholderInventory();
+            Banked = carryOverRewards ?? new BattleRewards();
+
+            // After every unit exists and after RecoverMpAfterBattle has run, so the
+            // snapshot is the state the player actually walks in with -- not the state
+            // they walked out of the previous map with.
+            foreach (var unit in PlayerUnits.Concat(Bench))
+                _entryState[unit] = (unit.CurrentHp, unit.CurrentMp);
+        }
+
+        /// <summary>Puts every player-side unit back to the HP/MP it had when this battle
+        /// started (M20). Units that have since been subbed in or out are covered either
+        /// way -- the snapshot spans active and bench together, and sub-in/out moves the
+        /// same objects between those two lists rather than creating new ones.
+        ///
+        /// Deliberately does NOT revive the dead: CurrentHp is restored for everyone,
+        /// which brings a unit that died during this battle back to its entry HP. That's
+        /// the intended reading of "back to the stats you had when you went into the
+        /// fight" -- a withdrawal undoes the fight, and a fight you undid didn't kill
+        /// anyone. Status effects are cleared for the same reason.</summary>
+        public void RestoreEntryState()
+        {
+            foreach (var unit in PlayerUnits.Concat(Bench).ToList())
+            {
+                if (!_entryState.TryGetValue(unit, out var entry)) continue;
+                unit.CurrentHp = entry.hp;
+                unit.CurrentMp = entry.mp;
+                unit.StatusEffects.Clear();
+                unit.DamageTakenSinceLastTurn = 0;
+                unit.CurrentUltimateCharge = 0;
+            }
         }
 
         /// <summary>No economy/shop/farm system exists yet to source real starting stock

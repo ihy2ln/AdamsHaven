@@ -15,13 +15,14 @@ namespace Game.Battle
         public float Age;
     }
 
-    /// <summary>Escaped (M19) is a third terminal state, not a flavour of defeat: the
-    /// party is intact and alive, they just left. It ends the run here only because this
-    /// slice has no overworld to return to -- see BattleHud's outcome banner.</summary>
-    public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory, Escaped }
+    /// <summary>Escaped and Quit (M19/M20) are terminal states that aren't defeats: the
+    /// party is intact, they just left. Both return to camp with entry HP/MP restored;
+    /// they differ only in what happens to the battle's earnings -- escaping banks them,
+    /// quitting throws them away. See BattleController.LeaveBattle.</summary>
+    public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory, Escaped, Quit }
 
     /// <summary>Which top-level action a manual-mode player turn resolved to.</summary>
-    public enum ChosenAction { None, Skill, Reposition, Sub, Item, Escape }
+    public enum ChosenAction { None, Skill, Reposition, Sub, Item, Escape, Quit }
 
     /// <summary>Drives what BattleHud shows during a manual-mode player turn.</summary>
     public enum ActionPhase { Idle, ChooseAction, ChooseBench, ChooseTarget }
@@ -58,8 +59,24 @@ namespace Game.Battle
         public bool CanUseItem => World.Inventory.HasAnyUsable;
         public BattleInventory Inventory => World.Inventory;
 
-        public bool CanUndo => _history.CanUndo;
-        public bool CanRedo => _history.CanRedo;
+        // Undo/redo are closed off once the party has left the battle (M20). Escaping
+        // and quitting both mutate state BattleHistory doesn't model -- entry HP/MP
+        // restore, cleared status effects, a banked or binned reward ledger -- so
+        // rewinding into the middle of a battle you've already walked out of would
+        // reconstruct a half-correct world. Victory and defeat are unaffected.
+        public bool CanUndo => _history.CanUndo && !HasLeftBattle;
+        public bool CanRedo => _history.CanRedo && !HasLeftBattle;
+
+        public bool HasLeftBattle => Outcome == BattleOutcome.Escaped || Outcome == BattleOutcome.Quit;
+
+        /// <summary>What this battle has earned so far (M20) -- what Flee protects and
+        /// Quit throws away. Surfaced for the action row, which shows the stake next to
+        /// the flee odds so the player can weigh the two exits against each other.</summary>
+        public BattleRewards PendingRewards => World.Pending;
+
+        /// <summary>Raised when the party leaves a battle under its own power (M20) --
+        /// escaped or quit. BattleBootstrap listens and boots the camp screen.</summary>
+        public event Action OnLeaveRequested;
 
         /// <summary>Failed escape attempts this battle (M19). Feeds EscapeCalculator's
         /// escalating bonus, and reset by Init -- deliberately *not* rolled back by
@@ -278,6 +295,14 @@ namespace Game.Battle
             _chosenAction = ChosenAction.Escape;
         }
 
+        /// <summary>Player picked Quit (M20) -- abandon the fight outright. No roll and
+        /// no speed check, unlike Flee: quitting always works. What it costs is the
+        /// battle's entire haul, which is exactly the trade -- quitting is free when
+        /// you've earned nothing and ruinous once you have. Still routed through the
+        /// action queue rather than resolved here, so it spends the turn's slot like
+        /// every other action and can't fire mid-animation.</summary>
+        public void ChooseQuit() => _chosenAction = ChosenAction.Quit;
+
         /// <summary>Player picked Reposition -- swap column with an adjacent ally.</summary>
         public void ChooseReposition()
         {
@@ -327,7 +352,7 @@ namespace Game.Battle
 
         IEnumerator RunBattle()
         {
-            while (!World.IsOver && Outcome != BattleOutcome.Escaped)
+            while (!World.IsOver && !HasLeftBattle)
             {
                 var unit = _turnOrder.Next();
                 if (unit == null) break;
@@ -364,6 +389,7 @@ namespace Game.Battle
                     LogLine($"{unit.Definition.displayName} succumbs to poison.");
                     _visuals.SyncDefeated(unit);
                     Formation.Compact(World.AllUnits, unit.Faction);
+                    AwardKill(unit);
                 }
                 else if (wasStunned)
                 {
@@ -379,15 +405,22 @@ namespace Game.Battle
                 _history.Capture(World.AllUnits, World.Bench, Log, World.Inventory);
             }
 
-            // A successful escape (M19) already set Outcome and logged its own line --
-            // don't relabel it as a victory just because the party is still standing.
-            if (Outcome == BattleOutcome.Escaped) yield break;
+            // Escaping or quitting (M19/M20) already set Outcome and logged its own
+            // line -- don't relabel it as a victory just because the party is standing.
+            if (HasLeftBattle) yield break;
 
             Outcome = World.PlayerDefeated ? BattleOutcome.EnemyVictory : BattleOutcome.PlayerVictory;
             if (Outcome == BattleOutcome.PlayerVictory)
-                LogLine(World.HasNextMap ? "Victory! Proceed to the next battle." : "Victory!");
+            {
+                // Winning banks the haul, same as escaping -- the difference is that a
+                // win also lets you move on. A defeat keeps Pending unbanked, so a
+                // wipe loses the fight's earnings exactly like quitting does.
+                World.Banked.Absorb(World.Pending);
+                LogLine($"Victory! Spoils: {World.Pending.Describe()}.");
+                LogLine(World.HasNextMap ? "Proceed to the next battle." : "The dungeon is clear!");
+            }
             else
-                LogLine("Defeat...");
+                LogLine($"Defeat... {World.Pending.Describe()} lost with the party.");
         }
 
         IEnumerator RunAutoTurn(BattleUnit unit)
@@ -549,6 +582,12 @@ namespace Game.Battle
                 case ChosenAction.Escape:
                 {
                     ResolveEscape(unit);
+                    yield return new WaitForSeconds(ImpactHoldSeconds);
+                    break;
+                }
+                case ChosenAction.Quit:
+                {
+                    LeaveBattle(BattleOutcome.Quit, keepRewards: false);
                     yield return new WaitForSeconds(ImpactHoldSeconds);
                     break;
                 }
@@ -719,6 +758,7 @@ namespace Game.Battle
                 {
                     _visuals.SyncDefeated(hit);
                     Formation.Compact(World.AllUnits, hit.Faction);
+                    AwardKill(hit);
                 }
             }
             return hitTargets;
@@ -769,13 +809,70 @@ namespace Game.Battle
 
             if (UnityEngine.Random.value <= chance)
             {
-                Outcome = BattleOutcome.Escaped;
-                LogLine($"The party escaped the battle -- {unit.Definition.displayName} called it. ({chance:P0} chance)");
+                LogLine($"{unit.Definition.displayName} calls the retreat. ({chance:P0} chance)");
+                LeaveBattle(BattleOutcome.Escaped, keepRewards: true);
                 return;
             }
 
             FailedEscapeAttempts++;
             LogLine($"The party couldn't get away. ({chance:P0} chance -- the next attempt is easier)");
+        }
+
+        /// <summary>The shared exit for both ways of walking out of a fight (M20).
+        ///
+        /// The whole design lives in the one `keepRewards` flag. Escaping banks what the
+        /// battle earned; quitting bins it. Everything else the two share: the party goes
+        /// back to the HP/MP it walked in with (RestoreEntryState), and the camp screen
+        /// picks up from there. That's what makes them a real choice rather than two
+        /// words for the same button -- escaping is slow and can fail but protects a haul
+        /// you've built up, quitting is instant and certain but only sane while you have
+        /// nothing to lose.
+        ///
+        /// Restoring entry HP deliberately un-kills anyone who died this battle: a
+        /// withdrawal undoes the fight, and a fight you undid didn't kill anyone. See
+        /// BattleWorld.RestoreEntryState.</summary>
+        void LeaveBattle(BattleOutcome outcome, bool keepRewards)
+        {
+            string haul = World.Pending.Describe();
+
+            if (keepRewards)
+            {
+                World.Banked.Absorb(World.Pending);
+                LogLine($"The party escaped with {haul}.");
+            }
+            else
+            {
+                LogLine(World.Pending.IsEmpty
+                    ? "The party withdrew. Nothing had been earned yet -- nothing lost."
+                    : $"The party withdrew, abandoning {haul}.");
+            }
+
+            World.Pending.Clear();
+            World.RestoreEntryState();
+            _visuals.SyncAll(World);
+            Outcome = outcome;
+        }
+
+        /// <summary>Credits a defeated enemy's EXP/materials to this battle's pending
+        /// haul (M20). Called from both death paths -- the killing blow in ResolveAction
+        /// and the poison tick in RunBattle -- so how an enemy died never changes what it
+        /// pays out. Player deaths award nothing, obviously.</summary>
+        void AwardKill(BattleUnit dead)
+        {
+            if (dead.Faction != Faction.Enemy) return;
+            World.Pending.Award(dead);
+        }
+
+        /// <summary>Hand off to the camp screen after escaping or quitting (M20).
+        /// Driven by the outcome banner's button rather than fired automatically from
+        /// LeaveBattle, so the player gets a beat to read what they kept or lost before
+        /// the scene changes -- the same shape victory's "Next Battle" button already
+        /// had. Stops the turn coroutine for the same reason AdvanceToNextMap does.</summary>
+        public void GoToCamp()
+        {
+            if (!HasLeftBattle) return;
+            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
+            OnLeaveRequested?.Invoke();
         }
 
         public void Restart() => OnRestartRequested?.Invoke();

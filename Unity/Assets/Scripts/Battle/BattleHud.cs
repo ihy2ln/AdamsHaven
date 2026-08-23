@@ -171,7 +171,7 @@ namespace Game.Battle
 
         void DrawKeybindPanel(int w, int h)
         {
-            var panel = new Rect(w / 2f - 180, 130, 360, 262);
+            var panel = new Rect(w / 2f - 190, 130, 380, 282);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 22), "Keybinds", _title);
             string[] lines =
@@ -184,8 +184,9 @@ namespace Game.Battle
                 "R -- restart (after battle ends)",
                 "N -- skip this battle, go to the next stage",
                 "Click -- choose a highlighted target",
-                "BA/SM/U/R/S/I/F -- tap. SM/I open a list; tap again to close",
-                "U needs a full ultimate gauge; F flees (costs the turn either way)",
+                "BA/SM/U/R/S/I/F/Q -- tap. SM/I open a list; tap again to close",
+                "U needs a full ultimate gauge; F flees, keeping the haul (can fail)",
+                "Q quits outright -- always works, but abandons the haul",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -487,11 +488,13 @@ namespace Game.Battle
             var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
             var ultimateSkill = actor.Definition.ultimateSkill;
 
-            var labels = new[] { "BA", "SM", "U", "R", "S", "I", "F" };
+            // Q (Quit, M20) has no enable condition: walking away always works. What
+            // it costs is the battle's haul, which the label under the row spells out.
+            var labels = new[] { "BA", "SM", "U", "R", "S", "I", "F", "Q" };
             var enabled = new[]
             {
                 basicAttack != null, skillMoveOptions.Count > 0, actor.IsUltimateReady && ultimateSkill != null,
-                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem, _ctrl.CanEscape,
+                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem, _ctrl.CanEscape, true,
             };
 
             float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
@@ -530,17 +533,28 @@ namespace Game.Battle
                     case "S": _ctrl.OpenBenchMenu(); break;
                     case "I": _showItemList = !_showItemList; break;
                     case "F": _ctrl.ChooseEscape(); break;
+                    case "Q": _ctrl.ChooseQuit(); break;
                 }
             }
 
-            // The one action whose outcome is a coin flip, so the odds go on screen
-            // rather than only in the log after the fact -- and they climb visibly with
-            // each failure, which is the whole reason the escalation exists.
-            if (_ctrl.CanEscape)
+            // The two ways out of a fight, side by side, because the choice between
+            // them is the whole mechanic: F is a gamble that keeps the haul, Q is a
+            // certainty that bins it. Showing the haul next to the odds is what lets the
+            // player see that quitting is free early and ruinous late -- in the log
+            // after the fact would be far too late to matter.
             {
-                string odds = $"Flee {_ctrl.EscapeChanceNow:P0}";
-                if (_ctrl.FailedEscapeAttempts > 0) odds += $" (+{_ctrl.FailedEscapeAttempts})";
-                GUI.Label(new Rect(startX, y + IconSize + 2f, totalW, 16f), odds, _barLabel);
+                var parts = new List<string>();
+                if (_ctrl.CanEscape)
+                {
+                    string odds = $"F: flee {_ctrl.EscapeChanceNow:P0}";
+                    if (_ctrl.FailedEscapeAttempts > 0) odds += $" (+{_ctrl.FailedEscapeAttempts})";
+                    parts.Add(odds + ", keep haul");
+                }
+                parts.Add(_ctrl.PendingRewards.IsEmpty
+                    ? "Q: quit, nothing to lose"
+                    : $"Q: quit, lose {_ctrl.PendingRewards.Describe()}");
+                GUI.Label(new Rect(startX - 60f, y + IconSize + 2f, totalW + 120f, 16f),
+                    string.Join("   |   ", parts), _barLabel);
             }
 
             if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
@@ -561,6 +575,7 @@ namespace Game.Battle
             "S" => new Color(0.6f, 0.45f, 0.8f),
             "I" => new Color(0.35f, 0.8f, 0.55f),
             "F" => new Color(0.7f, 0.7f, 0.75f),
+            "Q" => new Color(0.55f, 0.5f, 0.5f),
             _ => Color.white,
         };
 
@@ -696,21 +711,27 @@ namespace Game.Battle
             {
                 BattleOutcome.PlayerVictory => "VICTORY",
                 BattleOutcome.Escaped => "ESCAPED",
+                BattleOutcome.Quit => "WITHDREW",
                 _ => "DEFEAT",
             };
             GUI.Label(new Rect(0, h / 2f - 60, w, 60), label, _big);
 
-            if (advancing)
+            if (_ctrl.HasLeftBattle)
+            {
+                string sub = _ctrl.Outcome == BattleOutcome.Escaped
+                    ? $"Got away with the haul. Carrying {_ctrl.World.Banked.Describe()}"
+                    : "Walked away empty-handed. The party is as it was going in";
+                GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
+                if (GUI.Button(new Rect(w / 2f - 100, h / 2f + 36, 200, 44), "Back to Camp", _btn)) _ctrl.GoToCamp();
+            }
+            else if (advancing)
             {
                 GUI.Label(new Rect(0, h / 2f, w, 30), "The party presses onward, wounds and all", _sub);
                 if (GUI.Button(new Rect(w / 2f - 100, h / 2f + 36, 200, 44), "Next Battle", _btn)) _ctrl.AdvanceToNextMap();
             }
             else
             {
-                string sub = _ctrl.Outcome == BattleOutcome.Escaped
-                    ? "The party withdrew -- no ground gained. Press R or tap below to try again"
-                    : "Press R or tap below to fight again";
-                GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
+                GUI.Label(new Rect(0, h / 2f, w, 30), "Press R or tap below to fight again", _sub);
                 if (GUI.Button(new Rect(w / 2f - 80, h / 2f + 36, 160, 44), "Restart", _btn)) _ctrl.Restart();
             }
         }

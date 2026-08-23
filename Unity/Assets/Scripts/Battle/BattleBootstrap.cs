@@ -20,14 +20,9 @@ namespace Game.Battle
         public void Boot() => BootMap(0, null, null, null);
 
         public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench,
-            BattleInventory carryOverInventory)
+            BattleInventory carryOverInventory, BattleRewards carryOverRewards = null)
         {
-            for (var i = transform.childCount - 1; i >= 0; i--)
-            {
-                var child = transform.GetChild(i).gameObject;
-                if (Application.isPlaying) Destroy(child);
-                else DestroyImmediate(child);
-            }
+            ClearChildren();
 
             var camGo = GameObject.Find("Main Camera") ?? new GameObject("Main Camera");
             // Deliberately not `?? camGo.AddComponent<Camera>()` -- Unity 6's component
@@ -46,7 +41,7 @@ namespace Game.Battle
             var settings = BattleSettings.Load();
             AudioListener.volume = settings.MasterVolume;
 
-            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench, carryOverInventory);
+            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench, carryOverInventory, carryOverRewards);
 
             var visualsGo = new GameObject("BattleVisuals");
             visualsGo.transform.SetParent(transform, false);
@@ -57,7 +52,12 @@ namespace Game.Battle
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
             ctrl.OnRestartRequested += () => BootMap(0, null, null, null);
-            ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList(), world.Inventory);
+            ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList(),
+                world.Inventory, world.Banked);
+            // Escaping or quitting (M20) goes to camp rather than to another battle. The
+            // map index is deliberately NOT advanced -- withdrawing from a fight doesn't
+            // clear it, so camp offers the same battle again.
+            ctrl.OnLeaveRequested += () => BootCamp(mapIndex, world, ctrl.Outcome);
             ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
@@ -67,6 +67,53 @@ namespace Game.Battle
             Debug.Log(world.LoadedOk
                 ? $"[AI.Game] Battle booted (map {mapIndex + 1}/{BattleWorld.MapCount})."
                 : "[AI.Game] Battle boot failed to load data -- run AI.Game > Battle > Build Assets From Manifest.");
+        }
+
+        /// <summary>Tears the battle down and stands up the camp screen in its place
+        /// (M20). Same scene, different contents -- BootMap already worked this way, so
+        /// camp doesn't need a scene of its own (and Battle.unity isn't in the build
+        /// settings, so a second scene would need wiring that doesn't exist yet).
+        ///
+        /// `mapIndex` is the battle the party just walked out of, not the next one:
+        /// leaving a fight doesn't clear it, so camp's "take on battle N" re-enters the
+        /// same map with the party restored to its entry state.</summary>
+        public void BootCamp(int mapIndex, BattleWorld world, BattleOutcome outcome)
+        {
+            ClearChildren();
+
+            var party = world.PlayerUnits.ToList();
+            var bench = world.Bench.ToList();
+
+            string arrival = outcome == BattleOutcome.Escaped
+                ? $"You broke off the fight and made it back to camp, carrying what you'd taken."
+                : "You walked away before it was worth anything. Nothing gained, nothing spent.";
+
+            var campGo = new GameObject("CampScreen");
+            campGo.transform.SetParent(transform, false);
+            var camp = campGo.AddComponent<CampScreen>();
+            camp.Init(mapIndex, party, bench, world.Inventory, world.Banked, arrival);
+            camp.OnContinueRequested += () => BootMap(mapIndex, party, bench, world.Inventory, world.Banked);
+            camp.OnLeaveDungeonRequested += () =>
+            {
+                // No home scene is wired to the battle slice yet -- Farm.unity exists and
+                // is the only scene in the build settings, but nothing connects the two
+                // (see PROJECT-README's "Known gaps"). Until that boundary is built,
+                // going home means starting over.
+                Debug.Log("[AI.Game] Left the dungeon -- no home scene wired yet, restarting the run.");
+                BootMap(0, null, null, null);
+            };
+
+            Debug.Log($"[AI.Game] Camp booted after {outcome} (next battle {mapIndex + 1}/{BattleWorld.MapCount}).");
+        }
+
+        void ClearChildren()
+        {
+            for (var i = transform.childCount - 1; i >= 0; i--)
+            {
+                var child = transform.GetChild(i).gameObject;
+                if (Application.isPlaying) Destroy(child);
+                else DestroyImmediate(child);
+            }
         }
     }
 }
