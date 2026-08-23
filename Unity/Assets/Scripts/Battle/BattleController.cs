@@ -58,6 +58,19 @@ namespace Game.Battle
         public bool CanUndo => _history.CanUndo;
         public bool CanRedo => _history.CanRedo;
 
+        /// <summary>Whether "skip this battle, go to the next stage" (M18) is available
+        /// right now. Two conditions, and the second one is not cosmetic: BattleWorld's
+        /// carry-over path drops the dead, so advancing with a wiped party boots the next
+        /// map with *zero* player units -- and PlayerDefeated is `PlayerUnits.Any() &&
+        /// PlayerUnits.All(dead)`, which is false when there are none at all. The battle
+        /// would then never end, with every enemy turn logging "has no usable skill"
+        /// forever. See BattleWorldTests.CarryingOverAWipedParty_WouldLeaveABattleThatCanNeverEnd,
+        /// which pins that hazard so this guard can't be dropped as redundant-looking.
+        /// A lost battle fails this check on its own (no survivors), which is the right
+        /// answer -- Restart is the way out of a defeat, not Skip.</summary>
+        public bool CanSkipToNextMap =>
+            World != null && World.LoadedOk && World.HasNextMap && World.PlayerUnits.Any(u => u.IsAlive);
+
         public event Action OnRestartRequested;
         public event Action OnAdvanceRequested;
 
@@ -143,6 +156,9 @@ namespace Game.Battle
             }
 
             if (Outcome != BattleOutcome.InProgress && Input.GetKeyDown(KeyCode.R)) Restart();
+            // Works while paused too -- Update isn't gated by Time.timeScale, and the
+            // next map's Init clears Paused anyway.
+            if (Input.GetKeyDown(KeyCode.N)) SkipToNextMap();
             if (Input.GetKeyDown(KeyCode.T)) ToggleMode();
             if (Input.GetKeyDown(KeyCode.Escape)) SetPaused(!Paused);
 
@@ -692,7 +708,33 @@ namespace Game.Battle
 
         public void Restart() => OnRestartRequested?.Invoke();
 
-        /// <summary>Only meaningful when Outcome == PlayerVictory && World.HasNextMap.</summary>
-        public void AdvanceToNextMap() => OnAdvanceRequested?.Invoke();
+        /// <summary>Move on to the next map, carrying the party as it stands. Used both
+        /// by the victory banner's "Next Battle" button and by SkipToNextMap below.
+        ///
+        /// Stops the turn coroutine first. On the victory path that's a no-op (RunBattle
+        /// has already returned by then), but a mid-battle skip can land in the middle of
+        /// a turn, and the listener rebuilds the whole scene under us -- Destroy is
+        /// deferred to end of frame, so without this the rest of the in-flight turn would
+        /// still resolve against a world that's being replaced.</summary>
+        public void AdvanceToNextMap()
+        {
+            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
+            OnAdvanceRequested?.Invoke();
+        }
+
+        /// <summary>Forfeit the current battle and jump straight to the next stage (M18),
+        /// party/bench/inventory carried over exactly as they stand -- same path a
+        /// victory takes, minus the winning. Deliberately has no confirmation prompt,
+        /// unlike Restart: skipping *advances* and keeps everything you're carrying, so
+        /// the only thing lost is this battle's undo history. Silently does nothing when
+        /// CanSkipToNextMap is false (no next map, or a wiped party) -- BattleHud greys
+        /// the button out in that state, and the `N` key has no other meaning, so there's
+        /// nothing to explain to the player.</summary>
+        public void SkipToNextMap()
+        {
+            if (!CanSkipToNextMap) return;
+            LogLine("Skipped the rest of this battle -- moving on to the next stage.");
+            AdvanceToNextMap();
+        }
     }
 }

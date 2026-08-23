@@ -92,6 +92,12 @@ all" hack -- is deleted, replaced by five authored `CombatStats` profiles on the
 themselves. See item 14 below and [[Combat-Systems]]. **These assets need one interactive
 Editor rebuild before they're live** -- see "Known gaps."
 
+M18 (this session) adds a **battle skip**: `N`, or Pause -> "Skip to Next Battle",
+forfeits the current fight and moves straight to the next stage, carrying the party,
+bench and inventory exactly as they stand. Same code path a victory already used, minus
+the winning. Guarded against the one way it can break the game -- skipping with a wiped
+party -- see item 15 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -613,6 +619,35 @@ Editor rebuild before they're live** -- see "Known gaps."
       attacker/target pairs and asserts `HitChance >= 0.8`. That last one is the whole
       accuracy design encoded as a test: it fails the moment someone retunes one unit's
       evasion up without checking what it does to the least accurate attacker.
+15. **Battle skip -- M18.** `N`, or Pause -> "Skip to Next Battle", abandons the current
+    fight and boots the next stage with the party, bench and inventory carried over as
+    they stand. It reuses `AdvanceToNextMap` -- the exact path the victory banner's "Next
+    Battle" button already took -- so a skipped battle and a won one hand off identically;
+    the only thing skipping adds is that it can happen mid-turn.
+    - **Two real details behind a deceptively small feature.** `AdvanceToNextMap` now
+      stops the turn coroutine before firing the event. On the victory path that's a
+      no-op (`RunBattle` has already returned), but a mid-battle skip lands inside a live
+      turn, and the listener rebuilds the entire scene -- Unity defers `Destroy` to end of
+      frame, so without the stop the rest of that turn would still resolve against a world
+      being replaced.
+    - **The wipe guard is the part that matters.** `CanSkipToNextMap` requires a living
+      party member, not for politeness but because `BattleWorld`'s carry-over drops the
+      dead: skipping on a wipe boots the next map with *zero* player units, and
+      `PlayerDefeated` is `PlayerUnits.Any() && PlayerUnits.All(dead)` -- **false when
+      there are none at all**. `IsOver` never becomes true, and `RunBattle` loops enemy
+      turns forever with nothing to target. A soft-lock, not a defeat screen. The victory
+      path could never reach it (you can't win by dying), which is precisely why it only
+      became reachable once skipping existed. A lost battle fails the same check for free,
+      which is the right answer -- Restart is the way out of a defeat, not Skip.
+    - **No confirmation prompt**, deliberately unlike "Restart Whole Battle". Skipping
+      *advances* and keeps everything you're carrying, so the only loss is this battle's
+      undo history. The button greys out when unavailable and `N` has no other meaning, so
+      there's nothing to explain.
+    - New tests: `BattleWorldTests.cs` (new file, 3 tests) pins the carry-over contract
+      the skip leans on -- the soft-lock hazard above, wounded survivors keeping their
+      exact HP and compacting into columns 0..n, and the last map having nothing to
+      advance to. The soft-lock test exists specifically so nobody deletes the guard as a
+      redundant-looking null check.
 
 ## Roster
 
@@ -683,6 +718,7 @@ costs the turn.
 | M15 | Centre-stage-only movement (crossover attempts reverted after live testing), body animation/skill effect decoupling (`SkillEffect`) | *(not yet tagged)* |
 | M16 | Elements/weakness chart, crit/accuracy, Break status, ultimate gauge + one skill per archetype, turn-order strip, unit stats HUD, clip-hang + IMGUI click-eating fixes | *(not yet tagged)* |
 | M17 | Map-2 enemy elements + ultimates (the `BuildCustomEnemy` gap), authored crit/accuracy/evasion profiles replacing the temporary random rolls | *(not yet tagged)* |
+| M18 | Battle skip (`N` / Pause menu) -- forfeit the current fight, carry the party to the next stage | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -694,8 +730,9 @@ precedent: commit + docs update, no snapshot/zip.
 ## Controls
 
 `T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
-`Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `?` keybind
-legend. Manual mode: a player unit's turn opens a small 5-icon menu under their feet,
+`Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `N` skip
+this battle and move to the next stage (M18 -- also in the pause menu; unavailable on
+the last map or after a wipe) · `?` keybind legend. Manual mode: a player unit's turn opens a small 5-icon menu under their feet,
 all five tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
 list; tap again to close it), **R** (Reposition), **S** (Sub), **I** (opens the potion
 list -- Hp/Mp/Multi, tap again to close it) -- then click a highlighted target on the
@@ -741,21 +778,24 @@ potion slots).
   `FarmAutoSetup`'s `[InitializeOnLoad]` guard only re-applies once per Editor session
   (`SessionState`-gated, unlike `BattleContentGuard`'s content check, which re-fires on
   every script recompile) -- resolves automatically the next time the Editor restarts.
-- **M17's content is written but not yet built -- one interactive Editor session away.**
-  The code is committed and compiles clean, but `Resources/Battle/*` on disk is still
-  content v8: map 2's enemies are still Neutral with no ultimate, and every `StatBlock`
-  still has crit/accuracy/evasion at 0. `ContentVersion` is now 9, so
-  `BattleContentGuard` rebuilds automatically the next time the project is opened in a
-  real Editor -- nothing to click. **Until that happens, 5 of the 89 EditMode tests fail
-  by design** (`Map2Enemies_HaveTheirOwnNonNeutralElement`,
-  `Map2Enemies_HaveAnUltimateMatchingTheirOwnElement`, `Map2Roster_IsElementallyDistinct`,
-  `EveryCycleElement_IsCarriedBySomeBuiltCharacter`,
-  `EveryCombatant_HasAuthoredCritAndAccuracyStats`) -- that is exactly what
-  `BattleAssetContentTests` is for, and the failure messages name the missing content
-  directly. This can't be fixed headlessly: rebuilding the assets means
-  `AssetDatabase.CreateAsset`/`SaveAssets()` after a script change, which is the
-  documented corruption path below, and M17 adds 3 brand-new `SkillDefinition` assets
-  (the enemy ultimates), i.e. the highest-risk version of it.
+- **Resolved same session: M17's content is built and committed (content v9).** It
+  shipped code-only at first -- the rebuild can't be done headlessly (it means
+  `AssetDatabase.CreateAsset`/`SaveAssets()` after a script change, the documented
+  corruption path below, and M17 adds 3 brand-new `SkillDefinition` assets, the
+  highest-risk version of it). The project owner then opened the Editor mid-session and
+  `BattleContentGuard` did it automatically off the v8->v9 stamp mismatch, no menu click.
+  Verified on disk before committing: every character carries a non-Neutral element, an
+  `ultimateSkill` and authored crit/accuracy/evasion; the 3 new ultimate assets exist
+  with sane GUIDs; **zero `m_Script: {fileID: 0}` corruption.** That's another point for
+  the "interactive rebuilds are safe, headless ones aren't" hypothesis, and a fairly
+  strong one -- this pass created new ScriptableObjects after a script change, the exact
+  shape that corrupted everything in M9.
+- **M18's battle skip is written but not yet compiled or tested.** It landed while the
+  project owner's Editor was open *and in Play mode*, so Unity hasn't imported the
+  changed scripts yet and batchmode can't run alongside it (shared lockfile). Needs one
+  `-runTests` pass once the Editor is closed -- expected 92 tests, all green. Nothing
+  about it is risky (no asset changes, no new systems), it just hasn't been through a
+  compiler yet.
 - **M17's numbers are a first pass by reasoning, not by play.** The crit/accuracy/evasion
   profiles (`CombatStats`) and the 3 enemy ultimates were tuned against the stat tables
   and the damage formula, not against a real battle -- `Plague Maw`'s power was already
@@ -923,17 +963,17 @@ potion slots).
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Open the Editor once so M17's content actually builds, then play map 2.** These
-   are one step now, not two: opening the project rebuilds `Resources/Battle` to content
-   v9 automatically (`BattleContentGuard`, no menu click needed), which is also what
-   turns the last 5 red EditMode tests green. Then fight Rotfang/Deadeye/Hexweaver and
-   confirm the whole stack against a second roster at once -- Poison/Attack Down/Defense
-   Down/Stun visibly doing something, auto mode reaching for offensive Skill Moves,
-   Break/crit landing, and now M17's own additions: Sable hitting Rotfang for 1.5x,
-   Deadeye's Storm Volley hitting all three party members at three different multipliers,
-   and Hexweaver's Blood Chorus healing its own side. Auto mode alone shows all of this
-   -- `ChooseAutoSkill` fires an ultimate the instant a gauge fills, on either faction --
-   so this needs a play-through, not manual input.
+2. **Play map 2.** The blocker on this is gone -- M17's content is built (v9) and
+   committed, so Rotfang/Deadeye/Hexweaver now have their elements and ultimates live.
+   **M18's `N` skip exists precisely to make this fast**: start a battle, press `N`, and
+   you're on map 2 with a full-HP party without fighting map 1 first. Then confirm the
+   whole stack against a second roster at once -- Poison/Attack Down/Defense Down/Stun
+   visibly doing something, auto mode reaching for offensive Skill Moves, Break/crit
+   landing, and M17's own additions: Sable hitting Rotfang for 1.5x, Deadeye's Storm
+   Volley hitting all three party members at three different multipliers, and Hexweaver's
+   Blood Chorus healing its own side. Auto mode alone shows all of this --
+   `ChooseAutoSkill` fires an ultimate the instant a gauge fills, on either faction -- so
+   this needs a play-through, not manual input.
 3. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
    specific things to watch (Blood Chorus sustain, Storm Volley burst on the healer).
    The profiles are all in one table (`CombatStats` in `Data/Core/StatBlock.cs`) and the

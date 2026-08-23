@@ -171,7 +171,7 @@ namespace Game.Battle
 
         void DrawKeybindPanel(int w, int h)
         {
-            var panel = new Rect(w / 2f - 170, 130, 340, 210);
+            var panel = new Rect(w / 2f - 170, 130, 340, 230);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 22), "Keybinds", _title);
             string[] lines =
@@ -182,6 +182,7 @@ namespace Game.Battle
                 "Ctrl+Z -- undo last turn",
                 "Ctrl+Y -- redo turn",
                 "R -- restart (after battle ends)",
+                "N -- skip this battle, go to the next stage",
                 "Click -- choose a highlighted target",
                 "BA/SM/U/R/S/I -- tap. SM/I open a list; tap again to close. U needs a full ultimate gauge",
             };
@@ -700,7 +701,7 @@ namespace Game.Battle
             if (_showSettings) { DrawSettingsPanel(w, h); return; }
             if (_showStats) { DrawAllUnitsStatsPanel(w, h); return; }
 
-            const float panelW = 320f, panelH = 360f;
+            const float panelW = 320f, panelH = 400f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x, panel.y + 10, panel.width, 30), "Paused", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
@@ -721,6 +722,18 @@ namespace Game.Battle
             by += 40;
 
             if (GUI.Button(new Rect(bx, by, bw, 34), "Settings", _btn)) _showSettings = true;
+            by += 40;
+
+            // Greyed out on the last map, and after a wipe -- see
+            // BattleController.CanSkipToNextMap for why the second case matters.
+            GUI.enabled = _ctrl.CanSkipToNextMap;
+            if (GUI.Button(new Rect(bx, by, bw, 34), "Skip to Next Battle (N)", _btn))
+            {
+                GUI.enabled = true;
+                _ctrl.SkipToNextMap();
+                return; // the scene is being rebuilt under us -- stop drawing this frame
+            }
+            GUI.enabled = true;
             by += 40;
 
             if (GUI.Button(new Rect(bx, by, bw, 34), "Restart Whole Battle", _btn))
