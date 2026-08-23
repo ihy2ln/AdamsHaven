@@ -68,6 +68,17 @@ basic-attack-only), while a new optional `SkillEffect` asset carries the skill-s
 impact visual, in preparation for the project owner's planned "skill orb" system. See
 item 12 below and [[Battle-System]].
 
+M16 (this session) is a full modern-turn-based combat pass: elements (a 5-way weakness
+cycle plus Light/Dark), crit rate/damage, accuracy/evasion, a Break status triggered by
+taking too much damage before your next turn, and an ultimate gauge with one real
+ultimate skill authored per archetype (matching that archetype's own element). Landed
+alongside the HUD to actually see all of it -- a turn-order strip, a break-progress bar,
+sprite darkening while broken, a colour-coded "U" action button, and a Unit Stats
+inspector (tap a name, or Pause -> Unit Stats). Also fixed two real bugs found live:
+an unbounded FMV-clip wait that could soft-lock the whole battle, and a Unity IMGUI
+issue where the ultimate button's own animated colour was eating its clicks. See item 13
+below and [[Battle-System]].
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -458,20 +469,83 @@ item 12 below and [[Battle-System]].
       `Resources/Battle` -- `SkillDefinition.effect` is a new optional field that
       defaults to null on every existing asset, and `clipKey` values were already
       correct; only the code reading them changed.
+13. **Elements, crit/accuracy, Break, ultimate gauge -- M16.** A full request for
+    "modern AAA turn-based" mechanics, built as a testable math/data layer first, then
+    the HUD to actually see it, in the same session.
+    - **Elements.** `ElementType` gains `Lightning` (7 elements + Neutral). New
+      `ElementChart.cs` (pure C#): a 5-way cycle (Fire>Wind>Earth>Lightning>Water>Fire)
+      plus a mutual Light/Dark rivalry, 1.5x/0.67x multipliers. `SkillDefinition.element`
+      already existed (for the unconnected roll-pool system) but was unused by every
+      Skill Move -- now every archetype's `CharacterDefinition.element` and all of its
+      Skill Moves/ultimate carry a real element (Melee=Fire, Ranged=Wind, Support=Water),
+      previously always Neutral.
+    - **Crit/accuracy.** `StatBlock` gains `critRate`/`critDamage`/`accuracy`/`evasion`.
+      All default to 0 -- deliberately harmless differently for each: 0 `critRate` never
+      crits, but 0 `accuracy` is treated as "always hits" (`DamageCalculator.HitChance`),
+      not "always misses", so pre-M16 content can't suddenly start whiffing. `ComputeDamage`
+      takes a pre-rolled `isCrit` bool rather than rolling internally, staying 100%
+      deterministic/testable -- the actual `UnityEngine.Random` rolls live in
+      `BattleController.ResolveAction`, same split M14's `OffensiveSkillMoveChance`
+      already established (pure math tested, the roll itself verified by play).
+    - **Break.** New `StatusEffectType.Break` -- taking >=30% of a unit's own max HP in
+      damage since its last turn triggers it right as the next turn comes up: skips that
+      turn like Stun (`BattleUnit.IsIncapacitated` now covers both) and adds bonus
+      damage taken while active (folded into `DefenseMultiplier`). A red break-progress
+      bar (HUD) shows the buildup before it triggers; the sprite darkens while active
+      (`BattleVisuals.SyncStatusTint`) -- added after "I couldn't tell if a unit was
+      broken."
+    - **Ultimate gauge + skills.** `BattleUnit.CurrentUltimateCharge` (0-100) fills from
+      a per-action grant plus a smaller per-turn trickle, mirroring the MP economy's
+      exact shape. One ultimate authored per archetype in `BattleAssetBuilder`
+      (`ultimateSkillByArchetype`) matching that archetype's element: **Inferno Blade**
+      (Melee/Fire, heavy hit + Defense Down), **Gale Storm** (Ranged/Wind, full-team AoE
+      + Attack Down), **Tidal Renewal** (Support/Water, full-team heal + Regen).
+      Gauge-gated, not MP-gated -- `ResolveAction` drains the gauge to 0 for whichever
+      skill `== Definition.ultimateSkill` instead of spending MP. Auto mode always uses
+      it the instant it's ready. `ContentVersion` bumped to 8.
+    - **Random test stats.** No character has real crit/accuracy numbers authored yet
+      (a real balance pass is future work), so `BattleWorld.RandomizeTestCombatStats`
+      rolls a random-but-playable value per unit at battle boot -- mutates each unit's
+      own private `CharacterInstance`, never the shared `CharacterDefinition` asset, so
+      it can't leak state across units or battles. Explicitly temporary, per its own doc
+      comment, until real content replaces it.
+    - **HUD additions.** A turn-order strip under the title (small battle-sprite icons,
+      right-to-left, rightmost = next to act, numbered 1-7 -- refined from an initial
+      centre-fan layout after the project owner asked for a clearer direction). A "U"
+      action button between SM and R, colour-coded like the rest of the row. A Unit
+      Stats inspector -- tap a name in the roster for one unit, or Pause -> "Unit Stats"
+      for everyone -- both with a "Max Ultimate (Test)" button so ultimates can be
+      tested without playing through a whole battle to charge the gauge.
+    - **Two real bugs found and fixed live.** (1) `BattleClipPlayer`'s FMV-clip wait
+      loops had no timeout -- a stuck `VideoPlayer.Prepare()` (or a playback that never
+      reports finished) could hang the entire turn coroutine, and therefore the whole
+      battle, recoverable only via Undo. Found chasing a real soft-lock report on
+      Kestrel's ultimate; both loops now cap at 5 real seconds
+      (`Time.realtimeSinceStartup`, immune to `Time.timeScale`) and log a warning
+      instead of hanging forever. (2) The "U" button needed multiple presses to
+      register -- its ready-state glow was animating `GUI.backgroundColor` every single
+      repaint, a known Unity IMGUI class of bug where a control's unstable paint state
+      can eat the click landing on it. Fixed by moving the animation to a separate,
+      non-interactive `GUI.DrawTexture` layer drawn behind the button, leaving the
+      button's own paint fully static like every other action icon.
+    - New tests: `ElementChartTests.cs`, `UltimateGaugeTests.cs`, plus additions to
+      `DamageCalculatorTests.cs` (crit, elemental weakness/resist, hit chance) and
+      `StatusEffectTests.cs` (Break). `BattleAssetContentTests.cs` gains 2 tests
+      confirming every archetype's element and ultimate actually landed on disk.
 
 ## Roster
 
-| Unit | Role | Faction | BA (free) | Skill Moves (mana, tap SM) |
-|---|---|---|---|---|
-| **Kestrel** | Melee | Player | Melee Basic Attack, 1 col | Second Wind (self-heal + Regen, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit + Defense Down, 35MP) |
-| **Sable** | Ranged | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit + Attack Down, 30MP) / Barrage (full-team AoE + Stun, 45MP) |
-| **Linnet** | Support | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal + Regen, 30MP) / Mana Spring (restore ally MP, 15MP) |
-| **Husk** | Melee | Enemy (map 1) | same as Kestrel's archetype | same as Kestrel's archetype |
-| **Warden** | Ranged | Enemy (map 1) | same as Sable's archetype | same as Sable's archetype |
-| **Stinger** | Support | Enemy (map 1) | same as Linnet's archetype | same as Linnet's archetype |
-| **Rotfang** | Melee | Enemy (map 2 only) | Bite, 1 col | Venom Strike (heavy hit + Poison, 25MP) |
-| **Deadeye** | Ranged | Enemy (map 2 only) | Snipe Shot, any col | Crippling Shot (heavy hit + Attack Down, 25MP) |
-| **Hexweaver** | Support | Enemy (map 2 only) | Hex Bolt (low power attack) | Heal (20MP) / Weaken (Defense Down, 25MP) |
+| Unit | Role | Element | Faction | BA (free) | Skill Moves (mana, tap SM) | Ultimate (tap U, gauge-gated) |
+|---|---|---|---|---|---|---|
+| **Kestrel** | Melee | Fire | Player | Melee Basic Attack, 1 col | Second Wind (self-heal + Regen, 30MP) / Rally (heal ally, 25MP) / Power Strike (heavy hit + Defense Down, 35MP) | Inferno Blade (heavy hit + Defense Down) |
+| **Sable** | Ranged | Wind | Player | Ranged Basic Attack, any col | Volley (3-wide AoE, 25MP) / Snipe (heavy hit + Attack Down, 30MP) / Barrage (full-team AoE + Stun, 45MP) | Gale Storm (full-team AoE + Attack Down) |
+| **Linnet** | Support | Water | Player | Support Strike (low power attack) | Heal (20MP) / Mass Heal (AoE heal, 35MP) / Focus Heal (big heal + Regen, 30MP) / Mana Spring (restore ally MP, 15MP) | Tidal Renewal (full-team heal + Regen) |
+| **Husk** | Melee | Fire | Enemy (map 1) | same as Kestrel's archetype | same as Kestrel's archetype | same as Kestrel's archetype |
+| **Warden** | Ranged | Wind | Enemy (map 1) | same as Sable's archetype | same as Sable's archetype | same as Sable's archetype |
+| **Stinger** | Support | Water | Enemy (map 1) | same as Linnet's archetype | same as Linnet's archetype | same as Linnet's archetype |
+| **Rotfang** | Melee | Neutral | Enemy (map 2 only) | Bite, 1 col | Venom Strike (heavy hit + Poison, 25MP) | none authored |
+| **Deadeye** | Ranged | Neutral | Enemy (map 2 only) | Snipe Shot, any col | Crippling Shot (heavy hit + Attack Down, 25MP) | none authored |
+| **Hexweaver** | Support | Neutral | Enemy (map 2 only) | Hex Bolt (low power attack) | Heal (20MP) / Weaken (Defense Down, 25MP) | none authored |
 
 **Bench reserves (player)** — sub in for any active player unit via the manual-mode Sub
 action, same archetype stats/BA/Skill Moves as their active counterpart, distinct art:
@@ -526,6 +600,7 @@ costs the turn.
 | M13 | Battle potions (3 slots, F-SSS rank), standard JRPG status effects, per-turn MP regen, Android-first platform priority | *(not yet tagged)* |
 | M14 | `impactFrames` re-fix (authored in C#), map-2-only enemy roster (Rotfang/Deadeye/Hexweaver), offensive-Skill-Move AI | *(not yet tagged)* |
 | M15 | Centre-stage-only movement (crossover attempts reverted after live testing), body animation/skill effect decoupling (`SkillEffect`) | *(not yet tagged)* |
+| M16 | Elements/weakness chart, crit/accuracy, Break status, ultimate gauge + one skill per archetype, turn-order strip, unit stats HUD, clip-hang + IMGUI click-eating fixes | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -578,13 +653,29 @@ potion slots).
 
 ## Known gaps
 
-- **M15's code changes (centre-stage-only movement, body/skill-effect decoupling)
-  haven't had a headless EditMode test pass yet.** They landed while the project
-  owner's Editor was open live (playing through M14's map-2 content), and batchmode
-  can't run alongside an open Editor on the same project (shared lockfile) -- run
-  `-runTests` once the Editor's closed to confirm the 53/56-passing baseline still
-  holds (the 3 pre-existing failures are M14's own asset-rebuild-pending ones, already
-  resolved by that same live session; a fresh run should show all passing now).
+- **`ProjectSettings.asset` still shows the pre-rename "AI.Game Farm"/`com.aigame.farm`
+  values.** The fix (all three of `FarmAutoSetup.cs`/`FarmBatchSetup.cs`/
+  `BuildAndroid.cs` now agree on "Adams Haven"/`com.adamshaven.game`) is committed, but
+  `FarmAutoSetup`'s `[InitializeOnLoad]` guard only re-applies once per Editor session
+  (`SessionState`-gated, unlike `BattleContentGuard`'s content check, which re-fires on
+  every script recompile) -- resolves automatically the next time the Editor restarts.
+- **Map 2's custom enemies (Rotfang/Deadeye/Hexweaver) have no element or ultimate
+  (M16).** `BuildCustomEnemy` is a separate code path from the shared-archetype loop
+  that authors `ultimateSkillByArchetype`/per-archetype elements, so these three were
+  out of scope for this pass -- they still default to Neutral with no ultimate. Cheap
+  to add later the same way the archetype ultimates were: a small hand-authored
+  `SkillDefinition` per enemy plus an element assignment in `BuildCustomEnemy`.
+- **No real crit/accuracy/evasion balance pass.** `BattleWorld.RandomizeTestCombatStats`
+  is explicitly a temporary testing aid (see its own doc comment) -- every character's
+  authored `baseStats` still has these fields at 0; the random values only exist at
+  runtime, per-battle, per-unit. A real balance pass should replace this with actual
+  authored numbers in `BattleAssetBuilder`.
+- **M16's two live-found bugs (the FMV-clip hang, the IMGUI click-eating button) were
+  fixed by defensive/structural changes, not a fully confirmed root cause for the
+  first one.** The clip-player timeout (5 real seconds) guarantees the turn always
+  proceeds either way, but *why* `VideoPlayer.Prepare()`/playback would ever actually
+  hang was never conclusively identified -- worth watching for recurrence, and if it
+  never recurs, treat the timeout as the permanent fix rather than a stopgap.
 - **Resolved this session, confirmed by the project owner's own interactive Editor
   use: manual mode's click-to-target and the action-menu buttons work fine with a real
   mouse.** The long-standing "never interactively click-tested" gap below was always
@@ -738,39 +829,43 @@ potion slots).
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Confirm M15's movement and body/skill-effect split hold up in play, then a headless
-   test pass.** M14's Editor rebuild already happened (the project owner's own live
-   session -- `Char_enemy_rotfang`/`Char_enemy_deadeye`/`Char_enemy_hexweaver` and their
-   skills are on disk); M15's movement rework and `SkillEffect` decoupling landed as
-   pure code during that same live session and haven't had a headless `-runTests` pass
-   yet (Unity was open throughout -- can't run batchmode alongside it, see "Known
-   gaps"). Run that pass once the Editor's closed to confirm nothing regressed.
-3. **Play map 2 and confirm the status-effect system for real.** This is the
-   project owner's own stated next checkpoint for it -- fight Rotfang/Deadeye/
-   Hexweaver, confirm Poison/Attack Down/Defense Down/Stun are all visibly doing
-   something, and that auto mode's units (both sides) sometimes reach for an
-   offensive Skill Move instead of only ever basic-attacking.
-4. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
+2. **Play map 2 and confirm the status-effect system for real, now with M16's own
+   Break/crit/elements in the mix too.** Fight Rotfang/Deadeye/Hexweaver, confirm
+   Poison/Attack Down/Defense Down/Stun are all visibly doing something, that auto mode
+   reaches for offensive Skill Moves and ultimates, and that Break/crit/elemental
+   weakness are all landing correctly against a second, different enemy roster.
+3. **Give map 2's custom enemies (Rotfang/Deadeye/Hexweaver) an element and ultimate
+   (M16 gap).** They're on a separate `BuildCustomEnemy` code path that M16 didn't
+   touch -- still Neutral, no ultimate. See "Known gaps."
+4. **A real crit/accuracy/evasion balance pass**, replacing `BattleWorld
+   .RandomizeTestCombatStats`'s temporary random rolls with actual authored numbers in
+   `BattleAssetBuilder`. See "Known gaps."
+5. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
    the map's generic impact FX, since no skill-specific effect exists yet -- the hook
    (`SkillDefinition.effect`) is ready the moment art/effect sheets are available, no
    further code changes needed to attach one.
-5. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
+6. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
    the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
    battle) because no economy system exists yet to source real starting inventory from.
-6. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+7. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations) -- explicitly deferred by the project owner until the foundation above
    is laid out further. The components are ready (M12) whenever this comes back up.
-7. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
+8. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
    fix) -- currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold,
    not synced to the clip's actual hit frame.
-8. Consider extending the status-effect system if content wants to go beyond the 6
+9. Consider extending the status-effect system if content wants to go beyond the 7
    types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
    core tick/apply/multiplier plumbing (M13) is general enough to add types to without
    restructuring it. `Poison` itself is still unused outside of Rotfang.
-9. More enemy variety beyond map 2's 3, if the project owner wants it -- the
-   `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
-   borrow art from an existing `CharacterDefinition` (no new art generation needed).
-10. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
-   reserves, no save/persistence. FOUNDATION.md's broader systems (tier/fusion, gacha,
-   farm/town economy) are designed but not connected to this battle system yet —
-   that's the actual "rest of the game," this slice only proves the battle screen works.
+10. More enemy variety beyond map 2's 3, if the project owner wants it -- the
+    `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
+    borrow art from an existing `CharacterDefinition` (no new art generation needed).
+11. **Bigger meta-systems from the project owner's own "modern AAA" list, still
+    unstarted**: boss phase/pattern triggers, an equipment/loadout system (a stats
+    screen exists now via M16's Unit Stats panel, but nothing equips gear yet), an
+    escape/flee option, and save/persistence. All flagged explicitly by the project
+    owner as wanted, just not yet begun.
+12. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+    reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
+    are designed but not connected to this battle system yet — that's the actual "rest
+    of the game," this slice only proves the battle screen works.
