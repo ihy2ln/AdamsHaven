@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: enemy_rotfang
   displayName: Rotfang
   classType: 0
-  element: 0
+  element: 4
   age: 3
   bio: 
   baseStats:
@@ -25,10 +25,10 @@ MonoBehaviour:
     magic: 4
     resistance: 8
     speed: 8
-    critRate: 0
-    critDamage: 0
-    accuracy: 0
-    evasion: 0
+    critRate: 0.12
+    critDamage: 1.8
+    accuracy: 0.92
+    evasion: 0.02
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -38,7 +38,7 @@ MonoBehaviour:
   standardSkill: {fileID: 11400000, guid: bea13ef161d95b945a7fcf4b287a3bce, type: 2}
   skillMoves:
   - {fileID: 11400000, guid: 1795c05e267c7674a86e39cd1a3a0ba9, type: 2}
-  ultimateSkill: {fileID: 0}
+  ultimateSkill: {fileID: 11400000, guid: dd049c3bc71958f4fa34b039aec91357, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

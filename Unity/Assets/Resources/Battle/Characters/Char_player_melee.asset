@@ -25,10 +25,10 @@ MonoBehaviour:
     magic: 6
     resistance: 8
     speed: 9
-    critRate: 0
-    critDamage: 0
-    accuracy: 0
-    evasion: 0
+    critRate: 0.1
+    critDamage: 1.75
+    accuracy: 0.94
+    evasion: 0.03
   movePoints: 4
   jump: 1
   costLateral: 2

@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: enemy_hexweaver
   displayName: Hexweaver
   classType: 4
-  element: 0
+  element: 1
   age: 3
   bio: 
   baseStats:
@@ -25,10 +25,10 @@ MonoBehaviour:
     magic: 22
     resistance: 14
     speed: 10
-    critRate: 0
-    critDamage: 0
-    accuracy: 0
-    evasion: 0
+    critRate: 0.08
+    critDamage: 1.5
+    accuracy: 0.95
+    evasion: 0.05
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -39,7 +39,7 @@ MonoBehaviour:
   skillMoves:
   - {fileID: 11400000, guid: 754c4df36655cfa49b3ac00ec4ac00c4, type: 2}
   - {fileID: 11400000, guid: e45a4eab53a08694a99aa8e7ea49626a, type: 2}
-  ultimateSkill: {fileID: 0}
+  ultimateSkill: {fileID: 11400000, guid: 0b522ddc89d9dd8428beb0265bb72a7c, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

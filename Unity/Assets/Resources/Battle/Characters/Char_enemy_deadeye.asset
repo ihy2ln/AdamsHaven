@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: enemy_deadeye
   displayName: Deadeye
   classType: 2
-  element: 0
+  element: 5
   age: 3
   bio: 
   baseStats:
@@ -25,10 +25,10 @@ MonoBehaviour:
     magic: 8
     resistance: 8
     speed: 13
-    critRate: 0
-    critDamage: 0
-    accuracy: 0
-    evasion: 0
+    critRate: 0.25
+    critDamage: 1.7
+    accuracy: 0.98
+    evasion: 0.1
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -38,7 +38,7 @@ MonoBehaviour:
   standardSkill: {fileID: 11400000, guid: 13f57799637c9a34ba1da5dc5ca5653f, type: 2}
   skillMoves:
   - {fileID: 11400000, guid: 469e6b6739c753d41a9951d06385604e, type: 2}
-  ultimateSkill: {fileID: 0}
+  ultimateSkill: {fileID: 11400000, guid: 1cf7bb50ca0f2ac4794bcdd9d9ba0fee, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

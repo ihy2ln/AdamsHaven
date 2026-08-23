@@ -17,7 +17,7 @@ MonoBehaviour:
   description: 
   pool: 0
   classType: 0
-  element: 0
+  element: 4
   pattern: {fileID: 11400000, guid: f10e662dfa1b9ce41beb1e70a24293be, type: 2}
   mpCost: 0
   cooldown: 0
