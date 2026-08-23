@@ -15,10 +15,13 @@ namespace Game.Battle
         public float Age;
     }
 
-    public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory }
+    /// <summary>Escaped (M19) is a third terminal state, not a flavour of defeat: the
+    /// party is intact and alive, they just left. It ends the run here only because this
+    /// slice has no overworld to return to -- see BattleHud's outcome banner.</summary>
+    public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory, Escaped }
 
     /// <summary>Which top-level action a manual-mode player turn resolved to.</summary>
-    public enum ChosenAction { None, Skill, Reposition, Sub, Item }
+    public enum ChosenAction { None, Skill, Reposition, Sub, Item, Escape }
 
     /// <summary>Drives what BattleHud shows during a manual-mode player turn.</summary>
     public enum ActionPhase { Idle, ChooseAction, ChooseBench, ChooseTarget }
@@ -57,6 +60,27 @@ namespace Game.Battle
 
         public bool CanUndo => _history.CanUndo;
         public bool CanRedo => _history.CanRedo;
+
+        /// <summary>Failed escape attempts this battle (M19). Feeds EscapeCalculator's
+        /// escalating bonus, and reset by Init -- deliberately *not* rolled back by
+        /// Undo. BattleHistory snapshots unit HP/MP/column and the log; threading a
+        /// scalar through it for this is a wider change than the feature justifies, and
+        /// the failure mode is benign in the only direction that matters: undoing a
+        /// failed escape and retrying keeps the accumulated bonus, so the player is
+        /// never trapped, only occasionally let off easy.</summary>
+        public int FailedEscapeAttempts { get; private set; }
+
+        /// <summary>Whether the party may attempt to flee this battle at all (M19).
+        /// Maps can forbid it (MapDefinition.forbidEscape) -- the standard "you can't
+        /// run from a boss" rule, and the hook a future boss-phase system wants. No
+        /// shipped map sets it yet, so this is true everywhere today.</summary>
+        public bool CanEscape => World != null && World.Map != null && !World.Map.forbidEscape;
+
+        /// <summary>Live escape odds, for the HUD to show before the player commits a
+        /// turn to it. Same call ResolveEscape rolls against, so the number on screen is
+        /// the number that gets used -- not an approximation of it.</summary>
+        public float EscapeChanceNow => World == null ? 0f : EscapeCalculator.EscapeChance(
+            World.PlayerUnits, World.EnemyUnits, FailedEscapeAttempts);
 
         /// <summary>Whether "skip this battle, go to the next stage" (M18) is available
         /// right now. Two conditions, and the second one is not cosmetic: BattleWorld's
@@ -137,6 +161,7 @@ namespace Game.Battle
             Settings = settings;
             Outcome = BattleOutcome.InProgress;
             Paused = false;
+            FailedEscapeAttempts = 0;
             ManualMode = !settings.AutoModeDefault;
             Time.timeScale = settings.SpeedMultiplier;
 
@@ -244,6 +269,15 @@ namespace Game.Battle
             _chosenAction = ChosenAction.Skill;
         }
 
+        /// <summary>Player picked Flee (M19). Costs the turn whether or not it works --
+        /// resolution happens in RunManualPlayerTurn, not here, so the roll stays on the
+        /// coroutine's timeline like every other action.</summary>
+        public void ChooseEscape()
+        {
+            if (!CanEscape) return;
+            _chosenAction = ChosenAction.Escape;
+        }
+
         /// <summary>Player picked Reposition -- swap column with an adjacent ally.</summary>
         public void ChooseReposition()
         {
@@ -293,7 +327,7 @@ namespace Game.Battle
 
         IEnumerator RunBattle()
         {
-            while (!World.IsOver)
+            while (!World.IsOver && Outcome != BattleOutcome.Escaped)
             {
                 var unit = _turnOrder.Next();
                 if (unit == null) break;
@@ -344,6 +378,10 @@ namespace Game.Battle
                 // class doc for why this 1:1 correspondence matters for Undo/Redo.
                 _history.Capture(World.AllUnits, World.Bench, Log, World.Inventory);
             }
+
+            // A successful escape (M19) already set Outcome and logged its own line --
+            // don't relabel it as a victory just because the party is still standing.
+            if (Outcome == BattleOutcome.Escaped) yield break;
 
             Outcome = World.PlayerDefeated ? BattleOutcome.EnemyVictory : BattleOutcome.PlayerVictory;
             if (Outcome == BattleOutcome.PlayerVictory)
@@ -506,6 +544,12 @@ namespace Game.Battle
                     var incoming = _chosenSubIncoming;
                     SubUnit(unit, incoming);
                     yield return _visuals.SwapUnitView(unit, incoming);
+                    break;
+                }
+                case ChosenAction.Escape:
+                {
+                    ResolveEscape(unit);
+                    yield return new WaitForSeconds(ImpactHoldSeconds);
                     break;
                 }
                 case ChosenAction.Item:
@@ -704,6 +748,34 @@ namespace Game.Battle
                 Color = color,
                 Age = 0f,
             });
+        }
+
+        /// <summary>Rolls one escape attempt for `unit`'s side (M19). The turn is spent
+        /// either way -- that's the cost of trying, and the reason a failed attempt isn't
+        /// simply free retries until it lands.
+        ///
+        /// The roll lives here rather than in EscapeCalculator for the same reason crit
+        /// and the offensive-Skill-Move AI chance do: UnityEngine.Random can't be tested
+        /// headlessly, so the pure math stays in a class that can be, and only the die
+        /// itself lives on the MonoBehaviour.</summary>
+        void ResolveEscape(BattleUnit unit)
+        {
+            // Player-faction only, and EscapeChanceNow's player-vs-enemy framing assumes
+            // it: ChooseEscape is reachable only from the manual-mode action row, and
+            // ChooseAutoSkill has no escape branch, so no enemy can get here. Enemies
+            // fleeing would need the chance computed from the acting unit's own side --
+            // deliberately not built, since nothing wants it yet.
+            float chance = EscapeChanceNow;
+
+            if (UnityEngine.Random.value <= chance)
+            {
+                Outcome = BattleOutcome.Escaped;
+                LogLine($"The party escaped the battle -- {unit.Definition.displayName} called it. ({chance:P0} chance)");
+                return;
+            }
+
+            FailedEscapeAttempts++;
+            LogLine($"The party couldn't get away. ({chance:P0} chance -- the next attempt is easier)");
         }
 
         public void Restart() => OnRestartRequested?.Invoke();

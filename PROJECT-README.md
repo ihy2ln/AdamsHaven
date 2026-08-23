@@ -98,6 +98,13 @@ bench and inventory exactly as they stand. Same code path a victory already used
 the winning. Guarded against the one way it can break the game -- skipping with a wiped
 party -- see item 15 below.
 
+M19 (this session) adds **escape/flee**, the first of the project owner's named
+unstarted systems to land. A new **F** button on the manual action row rolls against a
+speed-based chance that climbs with every failed try; the turn is spent either way.
+Success ends the battle in a new third outcome, `Escaped` -- not a defeat, but not
+progress either: no "Next Battle" button, which is the whole cost of the action and the
+only thing separating it from M18's skip. See item 16 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -648,6 +655,57 @@ party -- see item 15 below.
       exact HP and compacting into columns 0..n, and the last map having nothing to
       advance to. The soft-lock test exists specifically so nobody deletes the guard as a
       redundant-looking null check.
+16. **Escape/flee -- M19.** The first of the "modern AAA" meta-systems the project owner
+    named as unstarted. Taken next specifically because M18 had just built its machinery:
+    "leave this battle mid-fight and hand off cleanly" was already a solved path.
+    - **`EscapeCalculator.cs`** (new, pure C#, testable headlessly -- same split
+      `DamageCalculator` established: the math here, the `UnityEngine.Random` roll on
+      `BattleController`). Chance = a 50% base, shifted by up to +/-25% on how much
+      faster your side is than theirs, plus **+15% per failed attempt this battle**,
+      clamped to 95%. Only living units count on either side, so a lone fast survivor
+      reads as fast rather than being averaged against corpses.
+    - **Speed is compared as a ratio, not a difference**, clamped to [0.5x, 2x]. "Twice
+      as fast" should mean the same thing at 5-vs-10 as at 50-vs-100, and this slice's
+      single-digit speeds (8-13) would barely register under a difference-based formula.
+    - **The escalation is the part that matters.** Without it, a slow party facing a fast
+      enemy can be locked into a fight it can't win and can't leave, burning turns on a
+      roll that never improves. With it, fleeing costs turns rather than being a coin
+      flip you can lose forever -- pinned by
+      `EnoughFailedAttempts_ReachTheCapEvenAtTheWorstSpeedDisadvantage`.
+    - **`BattleOutcome.Escaped`**, a genuine third terminal state rather than a flavour
+      of defeat. The party is intact; they just left. The banner reads ESCAPED and offers
+      only Restart -- **deliberately no "Next Battle" even when the party is alive and a
+      next map exists.** Fleeing is not progress. That's the entire cost of the action,
+      and the only thing distinguishing it from M18's skip, which is a dev convenience
+      rather than a move in the game.
+    - **Live odds on screen.** The action row shows `Flee 50%` under it, climbing
+      visibly with each failure (`+1`, `+2`...). It's the one action whose outcome is a
+      coin flip, so the number belongs in front of the player before they spend the turn,
+      not in the log afterward. `EscapeChanceNow` is the same call `ResolveEscape` rolls
+      against, so what's shown is what's used.
+    - **`MapDefinition.forbidEscape`** -- the standard "you can't run from a boss" rule,
+      and the hook the boss-phase system will want. Defaults to false, so **no
+      `ContentVersion` bump was needed** (same reasoning as M15's `SkillDefinition
+      .effect`): every existing map still allows escape. No content sets it yet; a test
+      pins that, so flipping one becomes a visible decision.
+    - **Auto mode never flees, and enemies can't.** `ChooseEscape` is reachable only from
+      the manual action row and `ChooseAutoSkill` has no escape branch. Auto mode is a
+      "play it out for me" convenience -- a unit that decides to end your run for you is
+      not that. Enemies fleeing would need the chance computed from the acting unit's own
+      side rather than the player's; deliberately not built, since nothing wants it yet.
+    - **Undo doesn't roll back the escalating bonus.** `BattleHistory` snapshots unit
+      HP/MP/column and the log; threading a scalar through it for this is a wider change
+      than the feature justifies, and the failure mode is benign in the only direction
+      that matters -- undoing a failed escape and retrying keeps the accumulated bonus, so
+      the player is never trapped, only occasionally let off easy.
+    - New tests: `EscapeTests.cs` (new file, 9 tests) covers the formula, the ratio
+      property, the escalation reaching the cap, both clamps, dead-unit exclusion and
+      empty-side safety. One of them,
+      `TheWorstFirstAttemptInTheGame_IsStillBetterThanEvens`, exists to say out loud that
+      `MinChance` **doesn't bind today** -- the speed term can only ever subtract 12.5%,
+      so the real worst case is 37.5%, and MinChance is a guard against a future retune
+      rather than a working floor. Plus one content test that neither shipped map forbids
+      escape.
 
 ## Roster
 
@@ -719,6 +777,7 @@ costs the turn.
 | M16 | Elements/weakness chart, crit/accuracy, Break status, ultimate gauge + one skill per archetype, turn-order strip, unit stats HUD, clip-hang + IMGUI click-eating fixes | *(not yet tagged)* |
 | M17 | Map-2 enemy elements + ultimates (the `BuildCustomEnemy` gap), authored crit/accuracy/evasion profiles replacing the temporary random rolls | *(not yet tagged)* |
 | M18 | Battle skip (`N` / Pause menu) -- forfeit the current fight, carry the party to the next stage | *(not yet tagged)* |
+| M19 | Escape/flee -- speed-based chance with per-failure escalation, `Escaped` outcome, `forbidEscape` map hook | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -733,11 +792,13 @@ precedent: commit + docs update, no snapshot/zip.
 `Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `N` skip
 this battle and move to the next stage (M18 -- also in the pause menu; unavailable on
 the last map or after a wipe) · `?` keybind legend. Manual mode: a player unit's turn opens a small 5-icon menu under their feet,
-all five tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
-list; tap again to close it), **R** (Reposition), **S** (Sub), **I** (opens the potion
-list -- Hp/Mp/Multi, tap again to close it) -- then click a highlighted target on the
-field (BA/SM/Reposition/Item) or pick from the popup (SM's list, Sub's bench, Item's
-potion slots).
+all tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
+list; tap again to close it), **U** (ultimate, needs a full gauge), **R** (Reposition),
+**S** (Sub), **I** (opens the potion list -- Hp/Mp/Multi, tap again to close it), **F**
+(Flee, M19 -- rolls against the live odds shown under the row, and costs the turn either
+way) -- then click a highlighted target on the field (BA/SM/Reposition/Item) or pick from
+the popup (SM's list, Sub's bench, Item's potion slots). U and F resolve immediately with
+no target pick.
 
 ## How to run it
 
@@ -1010,9 +1071,11 @@ potion slots).
     originally did.
 11. **Bigger meta-systems from the project owner's own "modern AAA" list, still
     unstarted**: boss phase/pattern triggers, an equipment/loadout system (a stats
-    screen exists now via M16's Unit Stats panel, but nothing equips gear yet), an
-    escape/flee option, and save/persistence. All flagged explicitly by the project
-    owner as wanted, just not yet begun.
+    screen exists now via M16's Unit Stats panel, but nothing equips gear yet), and
+    save/persistence. Escape/flee came off this list in M19. Boss phases are the natural
+    next one -- `MapDefinition.forbidEscape` is already the first hook it needs, and it's
+    the only remaining item that lives entirely inside the battle scene; equipment and
+    persistence both want the farm/battle boundary settled first.
 12. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
     reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
     are designed but not connected to this battle system yet — that's the actual "rest

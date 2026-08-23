@@ -171,7 +171,7 @@ namespace Game.Battle
 
         void DrawKeybindPanel(int w, int h)
         {
-            var panel = new Rect(w / 2f - 170, 130, 340, 230);
+            var panel = new Rect(w / 2f - 180, 130, 360, 262);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x + 10, panel.y + 6, panel.width - 20, 22), "Keybinds", _title);
             string[] lines =
@@ -184,7 +184,8 @@ namespace Game.Battle
                 "R -- restart (after battle ends)",
                 "N -- skip this battle, go to the next stage",
                 "Click -- choose a highlighted target",
-                "BA/SM/U/R/S/I -- tap. SM/I open a list; tap again to close. U needs a full ultimate gauge",
+                "BA/SM/U/R/S/I/F -- tap. SM/I open a list; tap again to close",
+                "U needs a full ultimate gauge; F flees (costs the turn either way)",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -486,11 +487,11 @@ namespace Game.Battle
             var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
             var ultimateSkill = actor.Definition.ultimateSkill;
 
-            var labels = new[] { "BA", "SM", "U", "R", "S", "I" };
+            var labels = new[] { "BA", "SM", "U", "R", "S", "I", "F" };
             var enabled = new[]
             {
                 basicAttack != null, skillMoveOptions.Count > 0, actor.IsUltimateReady && ultimateSkill != null,
-                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem,
+                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem, _ctrl.CanEscape,
             };
 
             float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
@@ -528,7 +529,18 @@ namespace Game.Battle
                     case "R": _ctrl.ChooseReposition(); break;
                     case "S": _ctrl.OpenBenchMenu(); break;
                     case "I": _showItemList = !_showItemList; break;
+                    case "F": _ctrl.ChooseEscape(); break;
                 }
+            }
+
+            // The one action whose outcome is a coin flip, so the odds go on screen
+            // rather than only in the log after the fact -- and they climb visibly with
+            // each failure, which is the whole reason the escalation exists.
+            if (_ctrl.CanEscape)
+            {
+                string odds = $"Flee {_ctrl.EscapeChanceNow:P0}";
+                if (_ctrl.FailedEscapeAttempts > 0) odds += $" (+{_ctrl.FailedEscapeAttempts})";
+                GUI.Label(new Rect(startX, y + IconSize + 2f, totalW, 16f), odds, _barLabel);
             }
 
             if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
@@ -548,6 +560,7 @@ namespace Game.Battle
             "R" => new Color(0.4f, 0.75f, 0.45f),
             "S" => new Color(0.6f, 0.45f, 0.8f),
             "I" => new Color(0.35f, 0.8f, 0.55f),
+            "F" => new Color(0.7f, 0.7f, 0.75f),
             _ => Color.white,
         };
 
@@ -674,8 +687,17 @@ namespace Game.Battle
 
         void DrawOutcomeBanner(int w, int h)
         {
+            // Escaped (M19) deliberately gets no "Next Battle" button even though the
+            // party is alive and a next map exists: fleeing is not progress. That's the
+            // whole cost of the action, and the only thing separating it from M18's
+            // skip, which is a dev convenience rather than a move in the game.
             bool advancing = _ctrl.Outcome == BattleOutcome.PlayerVictory && _ctrl.World.HasNextMap;
-            string label = _ctrl.Outcome == BattleOutcome.PlayerVictory ? "VICTORY" : "DEFEAT";
+            string label = _ctrl.Outcome switch
+            {
+                BattleOutcome.PlayerVictory => "VICTORY",
+                BattleOutcome.Escaped => "ESCAPED",
+                _ => "DEFEAT",
+            };
             GUI.Label(new Rect(0, h / 2f - 60, w, 60), label, _big);
 
             if (advancing)
@@ -685,7 +707,10 @@ namespace Game.Battle
             }
             else
             {
-                GUI.Label(new Rect(0, h / 2f, w, 30), "Press R or tap below to fight again", _sub);
+                string sub = _ctrl.Outcome == BattleOutcome.Escaped
+                    ? "The party withdrew -- no ground gained. Press R or tap below to try again"
+                    : "Press R or tap below to fight again";
+                GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
                 if (GUI.Button(new Rect(w / 2f - 80, h / 2f + 36, 160, 44), "Restart", _btn)) _ctrl.Restart();
             }
         }

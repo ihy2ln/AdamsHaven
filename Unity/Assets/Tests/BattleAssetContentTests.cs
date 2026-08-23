@@ -463,6 +463,22 @@ namespace Game.Tests
             }
         }
 
+        /// <summary>M19: neither shipped map forbids escape. `forbidEscape` defaults to
+        /// false so no rebuild was needed to add it, and no content sets it yet -- it's
+        /// the hook a future boss-phase system wants. This pins the current answer, so
+        /// flipping one becomes a deliberate, visible change rather than a surprise the
+        /// first time someone can't flee.</summary>
+        [Test]
+        public void NeitherShippedMap_ForbidsEscape()
+        {
+            for (int i = 1; i <= 2; i++)
+            {
+                var map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{i}");
+                Assert.IsNotNull(map, $"Map_BattleSlice{i} missing.");
+                Assert.IsFalse(map.forbidEscape, $"map {i} blocks the Flee action -- no content is meant to yet.");
+            }
+        }
+
         /// <summary>The one number the whole accuracy pass hangs on: no matchup anywhere
         /// in the game may miss more than a fifth of the time. A turn-based battle where
         /// turns regularly evaporate reads as broken rather than tactical, so accuracy

@@ -36,6 +36,13 @@ namespace Game.Data
 
         public List<EnemyPlacement> enemies = new();
 
+        [Header("Rules")]
+        [Tooltip("Blocks the Flee action on this map (M19) -- the standard \"you can't "
+            + "run from a boss\" rule. Defaults to false, so every map built before this "
+            + "field existed still allows escape; no content sets it yet, and it's the "
+            + "hook a future boss-phase system wants.")]
+        public bool forbidEscape;
+
         public TileData GetTile(int lane, int column)
         {
             int i = lane * columnCount + column;
