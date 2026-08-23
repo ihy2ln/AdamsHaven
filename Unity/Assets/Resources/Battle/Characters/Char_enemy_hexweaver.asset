@@ -25,6 +25,10 @@ MonoBehaviour:
     magic: 22
     resistance: 14
     speed: 10
+    critRate: 0
+    critDamage: 0
+    accuracy: 0
+    evasion: 0
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -35,6 +39,7 @@ MonoBehaviour:
   skillMoves:
   - {fileID: 11400000, guid: 754c4df36655cfa49b3ac00ec4ac00c4, type: 2}
   - {fileID: 11400000, guid: e45a4eab53a08694a99aa8e7ea49626a, type: 2}
+  ultimateSkill: {fileID: 0}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

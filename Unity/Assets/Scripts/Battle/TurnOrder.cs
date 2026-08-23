@@ -45,5 +45,23 @@ namespace Game.Battle
                 // handing back a corpse.
             }
         }
+
+        /// <summary>Read-only preview of the next `count` units to act, for BattleHud's
+        /// turn-order strip (M16) -- never dequeues anything. The current round's
+        /// remaining queue comes first (already in the exact order Next() will hand them
+        /// out); if that's not enough to fill `count`, pads with a fresh speed-sort of
+        /// next round, same formula Next() itself uses once the current queue empties.
+        /// That tail is a preview, not a promise -- speed-affecting effects between now
+        /// and then can still reorder it for real.</summary>
+        public List<BattleUnit> PeekUpcoming(int count)
+        {
+            var result = _round.Where(u => u.IsAlive).ToList();
+            if (result.Count < count)
+            {
+                var nextRound = _allUnits.Where(u => u.IsAlive).OrderByDescending(u => u.Stats.speed);
+                result.AddRange(nextRound);
+            }
+            return result.Take(count).ToList();
+        }
     }
 }

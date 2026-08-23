@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: player_melee
   displayName: Kestrel
   classType: 0
-  element: 0
+  element: 1
   age: 3
   bio: 
   baseStats:
@@ -25,6 +25,10 @@ MonoBehaviour:
     magic: 6
     resistance: 8
     speed: 9
+    critRate: 0
+    critDamage: 0
+    accuracy: 0
+    evasion: 0
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -36,6 +40,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 77efe580953acfb459db823e311bce84, type: 2}
   - {fileID: 11400000, guid: 994d52d59f6adf447a1d8f4943c59d3c, type: 2}
   - {fileID: 11400000, guid: 95fa7d6562494374e8f0b6585cde5ea4, type: 2}
+  ultimateSkill: {fileID: 11400000, guid: 6a9f675f4d2d24044b35efeaad22cbbb, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

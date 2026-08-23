@@ -22,7 +22,12 @@ namespace Game.Data
         [Tooltip("Used when pool == Class.")]
         public ClassType classType;
 
-        [Tooltip("Used when pool == Element.")]
+        [Tooltip("Two uses: (1) which roll pool this belongs to, when pool == Element "
+            + "(recruitment/gacha, not yet connected to the battle scene); (2) this "
+            + "skill's damage element for DamageCalculator.ElementMultiplier (M16) -- "
+            + "every Skill Move authors this directly regardless of pool, since Skill "
+            + "Moves are hand-assigned per character, not rolled. Neutral (the type "
+            + "default) takes/deals no elemental bonus either way.")]
         public ElementType element;
 
         [Header("Targeting")]

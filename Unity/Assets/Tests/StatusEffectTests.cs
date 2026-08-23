@@ -117,5 +117,45 @@ namespace Game.Tests
 
             Assert.Less(weakened, baseline, "AttackDown on the attacker should deal less damage.");
         }
+
+        // -- M16: Break -------------------------------------------------------------
+
+        [Test]
+        public void IsIncapacitated_TrueForEitherStunOrBreak()
+        {
+            var unit = MakeUnit(DummyStats, Faction.Player, 0, true);
+            Assert.IsFalse(unit.IsIncapacitated);
+
+            unit.ApplyStatus(StatusEffectType.Break, magnitude: 0.3f, turns: 1);
+            Assert.IsTrue(unit.IsIncapacitated, "Break should incapacitate the same way Stun does.");
+
+            unit.TickStatusEffects();
+            Assert.IsFalse(unit.IsIncapacitated, "a 1-turn Break should be gone after one tick, same as Stun.");
+        }
+
+        [Test]
+        public void Break_DoesNotSetIsStunned()
+        {
+            var unit = MakeUnit(DummyStats, Faction.Player, 0, true);
+            unit.ApplyStatus(StatusEffectType.Break, magnitude: 0.3f, turns: 1);
+
+            Assert.IsFalse(unit.IsStunned, "IsStunned should stay specific to the Stun type; IsIncapacitated is the combined check.");
+            Assert.IsTrue(unit.IsIncapacitated);
+        }
+
+        [Test]
+        public void Break_IncreasesDamageTakenLikeDefenseDown()
+        {
+            var attacker = MakeUnit(DummyStats, Faction.Player, 0, true);
+            var target = MakeUnit(DummyStats, Faction.Enemy, 3, false);
+            var skill = MakeSkill(pattern: null, usesMagic: false, power: 1f);
+
+            int baseline = DamageCalculator.ComputeDamage(attacker, target, skill, columnDistance: 1);
+
+            target.ApplyStatus(StatusEffectType.Break, magnitude: 0.3f, turns: 1);
+            int againstBroken = DamageCalculator.ComputeDamage(attacker, target, skill, columnDistance: 1);
+
+            Assert.Greater(againstBroken, baseline, "a broken target should take bonus damage.");
+        }
     }
 }

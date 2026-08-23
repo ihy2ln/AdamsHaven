@@ -318,5 +318,41 @@ namespace Game.Tests
             Assert.IsTrue(def.skillMoves.Any(s => s != null && s.targetsAllies && !s.restoresMana),
                 "Hexweaver has no HP-healing Skill Move, so auto mode will never heal its allies.");
         }
+
+        // -- M16: per-archetype elements and ultimates -------------------------------
+
+        static readonly (string unitId, ElementType element)[] ArchetypeElements =
+        {
+            ("player_melee", ElementType.Fire), ("player_ranged", ElementType.Wind), ("player_support", ElementType.Water),
+            ("enemy_melee", ElementType.Fire), ("enemy_ranged", ElementType.Wind), ("enemy_support", ElementType.Water),
+            ("player_bench_melee", ElementType.Fire), ("player_bench_ranged", ElementType.Wind), ("player_bench_support", ElementType.Water),
+        };
+
+        /// <summary>Every non-map-2 unit's element (M16) should match its archetype, not
+        /// sit at the Neutral default that made DamageCalculator.ElementMultiplier a
+        /// no-op for every character before this milestone.</summary>
+        [Test]
+        public void EveryArchetype_HasItsOwnNonNeutralElement()
+        {
+            foreach (var (unitId, element) in ArchetypeElements)
+                Assert.AreEqual(element, Load(unitId).element, $"{unitId} should be {element}-elemental.");
+        }
+
+        /// <summary>Each archetype's ultimateSkill (M16) exists and carries the same
+        /// element as the character -- "should match the element and class type" per the
+        /// project owner's spec -- and is gauge-gated (0 mpCost) rather than MP-gated,
+        /// since BattleController.ResolveAction drains BattleUnit.CurrentUltimateCharge
+        /// for whichever skill == Definition.ultimateSkill regardless of mpCost.</summary>
+        [Test]
+        public void EveryArchetype_HasAnUltimateMatchingItsOwnElement()
+        {
+            foreach (var (unitId, element) in ArchetypeElements)
+            {
+                var def = Load(unitId);
+                Assert.IsNotNull(def.ultimateSkill, $"{unitId} has no ultimateSkill -- the U button can never enable.");
+                Assert.AreEqual(element, def.ultimateSkill.element, $"{unitId}'s ultimate should be {element}-elemental like the character.");
+                Assert.AreEqual(0, def.ultimateSkill.mpCost, $"{unitId}'s ultimate should be free (gauge-gated, not MP-gated).");
+            }
+        }
     }
 }

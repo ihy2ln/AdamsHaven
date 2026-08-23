@@ -49,6 +49,13 @@ namespace Game.Data
             + "support skills (this is where Heal lives), ranged gets sniping/AoE skills.")]
         public List<SkillDefinition> skillMoves = new();
 
+        [Tooltip("Fires once BattleUnit.IsUltimateReady (M16) -- the gauge charges from "
+            + "acting and a small per-turn trickle (BattleController), fully draining on "
+            + "use. Design intent: match this unit's own element and classType (a Fire "
+            + "Warrior's ultimate is a Fire-elemental Warrior-flavoured move), unlike "
+            + "skillMoves which don't need to match either. Null until content authors it.")]
+        public SkillDefinition ultimateSkill;
+
         [Tooltip("Leave empty to roll from the global pool matching classType.")]
         public List<SkillDefinition> classSkillPool = new();
 

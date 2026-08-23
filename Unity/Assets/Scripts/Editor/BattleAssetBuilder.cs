@@ -39,9 +39,11 @@ namespace Game.EditorTools
         /// assets (Battle/Potions/) and status effects on 5 existing Skill Moves. 6 =
         /// impactFrames now authored in KnownGoodImpactFrames instead of read from the
         /// manifest's unreliable impact_frames field. 7 = M14's map-2-only enemy roster
-        /// (Rotfang/Deadeye/Hexweaver).
+        /// (Rotfang/Deadeye/Hexweaver). 8 = M16's per-archetype element (CharacterDefinition
+        /// .element/SkillDefinition.element, previously always Neutral) and one ultimate
+        /// skill per archetype (CharacterDefinition.ultimateSkill, previously always null).
         /// </summary>
-        public const int ContentVersion = 7;
+        public const int ContentVersion = 8;
 
         /// <summary>EditorPrefs key holding the ContentVersion last written to disk.
         /// Deliberately EditorPrefs rather than an asset in the repo: a fresh clone (or a
@@ -132,26 +134,26 @@ namespace Game.EditorTools
             // direction), not a tuned balance pass.
             var meleeGuard = BuildSkillMove("Skill_MeleeGuard", "Second Wind",
                 BuildSelfOnlyPattern(), power: 0.8f, usesMagic: false, targetsAllies: true, mpCost: 30,
-                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2, element: ElementType.Fire);
             var meleeRally = BuildSkillMove("Skill_MeleeRally", "Rally",
-                supportPattern, power: 0.7f, usesMagic: false, targetsAllies: true, mpCost: 25);
+                supportPattern, power: 0.7f, usesMagic: false, targetsAllies: true, mpCost: 25, element: ElementType.Fire);
             var meleePowerStrike = BuildSkillMove("Skill_MeleePowerStrike", "Power Strike",
                 meleePattern, power: 2.0f, usesMagic: false, targetsAllies: false, mpCost: 35,
-                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.2f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.2f, statusDuration: 2, element: ElementType.Fire);
 
             // Ranged -- sniping and AoE: a heavy single shot, a 3-wide cluster hit, and a
             // guaranteed full-team volley for the "AoE" end of that design intent. Snipe
             // and Barrage also carry a status effect (M13), same additive rule as above.
             var rangedVolley = BuildSkillMove("Skill_RangedVolley", "Volley",
                 BuildVolleyPattern(rangedPattern.rangeOffsets), power: 0.6f, usesMagic: false,
-                targetsAllies: false, mpCost: 25, isRanged: true);
+                targetsAllies: false, mpCost: 25, isRanged: true, element: ElementType.Wind);
             var rangedSnipe = BuildSkillMove("Skill_RangedSnipe", "Snipe",
                 rangedPattern, power: 1.8f, usesMagic: false, targetsAllies: false, mpCost: 30, isRanged: true,
-                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.2f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.2f, statusDuration: 2, element: ElementType.Wind);
             var rangedBarrage = BuildSkillMove("Skill_RangedBarrage", "Barrage",
                 BuildBarragePattern(rangedPattern.rangeOffsets), power: 0.5f, usesMagic: false,
                 targetsAllies: false, mpCost: 45, isRanged: true,
-                inflictsStatus: StatusEffectType.Stun, statusMagnitude: 0f, statusDuration: 1);
+                inflictsStatus: StatusEffectType.Stun, statusMagnitude: 0f, statusDuration: 1, element: ElementType.Wind);
 
             // Healer -- support: the relocated single-target Heal, a wider group heal, and
             // a bigger single-target emergency heal.
@@ -163,16 +165,17 @@ namespace Game.EditorTools
             healSkill.skillId = "skill_support_heal";
             healSkill.displayName = "Heal";
             healSkill.mpCost = 20;
+            healSkill.element = ElementType.Water;
             EditorUtility.SetDirty(healSkill);
             var massHeal = BuildSkillMove("Skill_SupportMassHeal", "Mass Heal",
-                BuildWideHealPattern(), power: 0.6f, usesMagic: true, targetsAllies: true, mpCost: 35);
+                BuildWideHealPattern(), power: 0.6f, usesMagic: true, targetsAllies: true, mpCost: 35, element: ElementType.Water);
             var focusHeal = BuildSkillMove("Skill_SupportFocusHeal", "Focus Heal",
                 supportPattern, power: 1.6f, usesMagic: true, targetsAllies: true, mpCost: 30,
-                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2);
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 10f, statusDuration: 2, element: ElementType.Water);
             // Healer's standardSkill (BA) becomes the low-power attack instead of the heal
             // -- "healers can attack too" -- now that Heal itself lives in skillMoves.
             var healerBasicAttack = BuildSkillMove("Skill_SupportAttackBasic", "Support Strike",
-                supportPattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0);
+                supportPattern, power: 0.5f, usesMagic: false, targetsAllies: false, mpCost: 0, element: ElementType.Water);
             // Mana Spring (M12) -- the healer spends their own MP to hand a slice of it to
             // an ally, per the project owner's MP-economy design: a small passive trickle
             // from basic attacks, a bigger chunk between battles, full restore reserved for
@@ -181,7 +184,7 @@ namespace Game.EditorTools
             // ally); restoresMana routes it to BattleController.ResolveAction's MP branch
             // instead of the HP-heal branch.
             var manaSpring = BuildSkillMove("Skill_SupportManaSpring", "Mana Spring",
-                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 15, restoresMana: true);
+                supportPattern, power: 1.0f, usesMagic: true, targetsAllies: true, mpCost: 15, restoresMana: true, element: ElementType.Water);
 
             var skillMovesByArchetype = new Dictionary<string, List<SkillDefinition>>
             {
@@ -190,6 +193,31 @@ namespace Game.EditorTools
                 ["Support"] = new() { healSkill, massHeal, focusHeal, manaSpring },
             };
             var standardSkillOverride = new Dictionary<string, SkillDefinition> { ["Support"] = healerBasicAttack };
+
+            // Ultimates (M16) -- one per archetype, gated by BattleUnit.IsUltimateReady
+            // rather than mpCost (left at 0; BattleController.ResolveAction drains the
+            // gauge instead of spending MP for whichever skill == Definition.ultimateSkill).
+            // Each matches its archetype's own element and leans into its class-type
+            // identity: Melee's is a single heavy finishing blow, Ranged's is a
+            // full-team AoE reusing Barrage's own pattern, Support's is a full-team heal
+            // reusing Mass Heal's pattern -- "should match the element and class type"
+            // per the project owner's spec. Numbers are arbitrary, not a tuned pass.
+            var meleeUltimate = BuildSkillMove("Skill_MeleeUltimate", "Inferno Blade",
+                meleePattern, power: 3.2f, usesMagic: false, targetsAllies: false, mpCost: 0,
+                inflictsStatus: StatusEffectType.DefenseDown, statusMagnitude: 0.3f, statusDuration: 3, element: ElementType.Fire);
+            var rangedUltimate = BuildSkillMove("Skill_RangedUltimate", "Gale Storm",
+                BuildBarragePattern(rangedPattern.rangeOffsets), power: 0.9f, usesMagic: false, targetsAllies: false,
+                mpCost: 0, isRanged: true,
+                inflictsStatus: StatusEffectType.AttackDown, statusMagnitude: 0.3f, statusDuration: 3, element: ElementType.Wind);
+            var supportUltimate = BuildSkillMove("Skill_SupportUltimate", "Tidal Renewal",
+                BuildWideHealPattern(), power: 2.5f, usesMagic: true, targetsAllies: true, mpCost: 0,
+                inflictsStatus: StatusEffectType.Regen, statusMagnitude: 15f, statusDuration: 3, element: ElementType.Water);
+            var ultimateSkillByArchetype = new Dictionary<string, SkillDefinition>
+            {
+                ["Melee"] = meleeUltimate,
+                ["Ranged"] = rangedUltimate,
+                ["Support"] = supportUltimate,
+            };
 
             // Map 2's distinct enemy roster (M14) -- Rotfang/Deadeye/Hexweaver, reusing
             // Thorne/Reed/Vesper's already-imported art+clips (no new art generated, per
@@ -212,7 +240,8 @@ namespace Game.EditorTools
                     unitId, arch, tier,
                     standardSkill, clipSetByArchetype[archName],
                     TryGet(spritesByUnit, unitId), TryGet(portraitsByUnit, unitId),
-                    unityRelRoot, skillMoves: skillMovesByArchetype[archName]);
+                    unityRelRoot, skillMoves: skillMovesByArchetype[archName],
+                    ultimateSkill: ultimateSkillByArchetype[archName]);
                 characterDefs[unitId] = charDef;
             }
 
@@ -417,13 +446,13 @@ namespace Game.EditorTools
             string unitId, ArchetypeSpec arch, TierDefinition tier,
             SkillDefinition standardSkill, ClipSet clipSet,
             ManifestAsset spriteAsset, ManifestAsset portraitAsset, string unityRelRoot,
-            List<SkillDefinition> skillMoves = null)
+            List<SkillDefinition> skillMoves = null, SkillDefinition ultimateSkill = null)
         {
             var def = LoadOrCreate<CharacterDefinition>($"{OutDir}/Characters/Char_{unitId}.asset");
             def.characterId = unitId;
             def.displayName = RosterNames.TryGetValue(unitId, out var name) ? name : Titleize(unitId);
             def.classType = arch.ClassType;
-            def.element = ElementType.Neutral;
+            def.element = arch.Element;
             def.age = Age.Modern;
             def.baseStats = arch.BaseStats;
             def.maxMp = 100;
@@ -434,6 +463,7 @@ namespace Game.EditorTools
             def.costPerHeightLevel = 1;
             def.standardSkill = standardSkill;
             def.skillMoves = skillMoves != null ? new List<SkillDefinition>(skillMoves) : new List<SkillDefinition>();
+            def.ultimateSkill = ultimateSkill;
             def.growthPerLevel = 0.06f;
             def.clips = clipSet;
             def.portrait = LoadSprite(portraitAsset, unityRelRoot);
@@ -505,7 +535,8 @@ namespace Game.EditorTools
 
         static SkillDefinition BuildSkillMove(string assetName, string displayName, SkillPattern pattern,
             float power, bool usesMagic, bool targetsAllies, int mpCost, bool isRanged = false, bool restoresMana = false,
-            StatusEffectType inflictsStatus = StatusEffectType.None, float statusMagnitude = 0f, int statusDuration = 0)
+            StatusEffectType inflictsStatus = StatusEffectType.None, float statusMagnitude = 0f, int statusDuration = 0,
+            ElementType element = ElementType.Neutral)
         {
             var skill = LoadOrCreate<SkillDefinition>($"{OutDir}/Skills/{assetName}.asset");
             skill.skillId = assetName.ToLowerInvariant();
@@ -522,6 +553,7 @@ namespace Game.EditorTools
             skill.inflictsStatus = inflictsStatus;
             skill.statusMagnitude = statusMagnitude;
             skill.statusDuration = statusDuration;
+            skill.element = element;
             skill.clipKey = "basicAttack";
             EditorUtility.SetDirty(skill);
             return skill;
@@ -720,6 +752,16 @@ namespace Game.EditorTools
             public readonly List<Vector2Int> RangeOffsets;
             public readonly StatBlock BaseStats;
 
+            /// <summary>M16: each archetype's own damage element -- Melee/Ranged/Support
+            /// get Fire/Wind/Water respectively (arbitrary picks, not a lore decision).
+            /// Every Skill Move and the ultimate for that archetype are authored with a
+            /// matching element (see BuildSkillMove's element param and the ultimate
+            /// skills below), per the project owner's "starting SM matches the unit's
+            /// element" spec. CharacterDefinition.element itself also uses this, so
+            /// DamageCalculator.ElementMultiplier can actually read a real weakness
+            /// against these units, not just Neutral.</summary>
+            public readonly ElementType Element;
+
             public ArchetypeSpec(string name, string clipAssetId, ClassType classType, bool isRanged, bool usesMagic,
                 float power, List<Vector2Int> rangeOffsets, bool targetsAllies = false)
             {
@@ -737,6 +779,13 @@ namespace Game.EditorTools
                     "Ranged" => new StatBlock { hp = 90, attack = 18, defense = 8, magic = 8, resistance = 8, speed = 11 },
                     "Support" => new StatBlock { hp = 95, attack = 8, defense = 9, magic = 20, resistance = 12, speed = 10 },
                     _ => new StatBlock { hp = 100, attack = 15, defense = 10, magic = 10, resistance = 10, speed = 10 },
+                };
+                Element = name switch
+                {
+                    "Melee" => ElementType.Fire,
+                    "Ranged" => ElementType.Wind,
+                    "Support" => ElementType.Water,
+                    _ => ElementType.Neutral,
                 };
             }
         }

@@ -30,4 +30,5 @@ MonoBehaviour:
   statusMagnitude: 0.25
   statusDuration: 2
   clipKey: basicAttack
+  effect: {fileID: 0}
   rollWeight: 1

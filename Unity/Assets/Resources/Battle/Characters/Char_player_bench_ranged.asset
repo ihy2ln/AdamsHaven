@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: player_bench_ranged
   displayName: Reed
   classType: 2
-  element: 0
+  element: 3
   age: 3
   bio: 
   baseStats:
@@ -25,6 +25,10 @@ MonoBehaviour:
     magic: 8
     resistance: 8
     speed: 11
+    critRate: 0
+    critDamage: 0
+    accuracy: 0
+    evasion: 0
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -36,6 +40,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: bd635e31b626e5a419991276ee98fe4b, type: 2}
   - {fileID: 11400000, guid: bb1c915c7c902004fbd24d4026c84334, type: 2}
   - {fileID: 11400000, guid: 89869a534bed8df46848f179dc435766, type: 2}
+  ultimateSkill: {fileID: 11400000, guid: 1a66aabbdfb4cbc409287b6050bb4f2a, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06

@@ -61,6 +61,16 @@ namespace Game.Battle
         public event Action OnRestartRequested;
         public event Action OnAdvanceRequested;
 
+        /// <summary>Non-destructive preview for BattleHud's turn-order strip (M16) --
+        /// see TurnOrder.PeekUpcoming. Empty before Init runs.</summary>
+        public IReadOnlyList<BattleUnit> UpcomingTurnOrder(int count) =>
+            _turnOrder?.PeekUpcoming(count) ?? new List<BattleUnit>();
+
+        /// <summary>Dev-testing shortcut (M16, from the Unit Stats panel) -- instantly
+        /// fills one unit's ultimate gauge so its ultimate can be tested on that unit's
+        /// very next turn instead of grinding a whole battle to charge it normally.</summary>
+        public void DebugMaxUltimateCharge(BattleUnit unit) => unit.GainUltimateCharge(BattleUnit.MaxUltimateCharge);
+
         BattleVisuals _visuals;
         Camera _cam;
         TurnOrder _turnOrder;
@@ -88,6 +98,23 @@ namespace Game.Battle
         /// up over a long battle. Applies to every unit's own turn regardless of what
         /// action they take (even a skipped/stunned one) or which faction they're on.</summary>
         const int PassiveMpRegenPerTurn = 3;
+
+        /// <summary>Ultimate gauge (M16), same two-source shape as the MP economy above:
+        /// a bigger chunk for actually acting (granted in ResolveAction, any skill --
+        /// "every action", not just BA like MP's equivalent bonus) plus a smaller passive
+        /// trickle every turn regardless of action. Arbitrary numbers, not tuned.</summary>
+        const int UltimateChargePerAction = 15;
+        const int PassiveUltimateChargePerTurn = 5;
+
+        /// <summary>Break (M16): a unit that takes this fraction of its own max HP in
+        /// damage since its last turn enters Break right as its next turn comes up --
+        /// skips that turn (BattleUnit.IsIncapacitated) and takes bonus damage while down
+        /// (folded into DefenseMultiplier). Arbitrary numbers, not a tuned balance pass.
+        /// Threshold is public so BattleHud can render a break-progress bar against the
+        /// same number this class actually checks against.</summary>
+        public const float BreakDamageThresholdFraction = 0.3f;
+        const float BreakVulnerabilityBonus = 0.3f;
+        const int BreakDurationTurns = 1;
 
         public void Init(BattleWorld world, BattleVisuals visuals, Camera cam, BattleSettings settings)
         {
@@ -258,13 +285,26 @@ namespace Game.Battle
                 yield return new WaitForSeconds(PreActionDelaySeconds);
 
                 unit.RestoreMp(PassiveMpRegenPerTurn);
+                unit.GainUltimateCharge(PassiveUltimateChargePerTurn);
+
+                // Break (M16): evaluated right as this unit's turn comes up, against
+                // damage taken since its last one. Applied BEFORE the wasStunned read
+                // below so a freshly-triggered Break (duration 1) skips this same turn --
+                // identical ordering trick to the existing 1-turn-Stun case just below.
+                if (!unit.IsIncapacitated && unit.DamageTakenSinceLastTurn >= BreakDamageThresholdFraction * unit.Stats.hp)
+                {
+                    unit.ApplyStatus(StatusEffectType.Break, BreakVulnerabilityBonus, BreakDurationTurns);
+                    LogLine($"{unit.Definition.displayName} is broken!");
+                }
+                unit.DamageTakenSinceLastTurn = 0;
 
                 // Checked BEFORE TickStatusEffects (which decrements/removes expired
-                // effects) so a 1-turn Stun skips exactly one turn: turn 1 sees
+                // effects) so a 1-turn Stun/Break skips exactly one turn: turn 1 sees
                 // wasStunned=true and skips while the tick counts 1->0 and removes it,
-                // turn 2 sees no Stun left and acts normally.
-                bool wasStunned = unit.IsStunned;
+                // turn 2 sees no Stun/Break left and acts normally.
+                bool wasStunned = unit.IsIncapacitated;
                 unit.TickStatusEffects();
+                _visuals.SyncStatusTint(unit);
 
                 if (!unit.IsAlive)
                 {
@@ -277,7 +317,7 @@ namespace Game.Battle
                 }
                 else if (wasStunned)
                 {
-                    LogLine($"{unit.Definition.displayName} is stunned and can't act.");
+                    LogLine($"{unit.Definition.displayName} can't act.");
                 }
                 else if (ManualMode && unit.Faction == Faction.Player)
                     yield return RunManualPlayerTurn(unit);
@@ -342,6 +382,21 @@ namespace Game.Battle
             {
                 targets = new List<BattleUnit>();
                 return null;
+            }
+
+            // Ultimate (M16) takes priority over everything else once ready -- it's a
+            // rare, earned resource, not a per-turn tactical option like the offensive
+            // Skill Move roll below, so auto mode always spends it rather than rolling a
+            // chance. Falls through to normal choice if there's no ultimateSkill authored
+            // yet (every character today) or it has no valid target this turn.
+            if (unit.IsUltimateReady && unit.Definition.ultimateSkill != null)
+            {
+                var ultTargets = TargetResolver.GetValidTargets(unit, unit.Definition.ultimateSkill, World.AllUnits);
+                if (ultTargets.Count > 0)
+                {
+                    targets = ultTargets;
+                    return unit.Definition.ultimateSkill;
+                }
             }
 
             // !restoresMana excludes Mana Spring (M12) -- without it, FirstOrDefault could
@@ -511,19 +566,39 @@ namespace Game.Battle
             else if (skill == unit.Definition.standardSkill)
                 unit.RestoreMp(BasicAttackMpRegen);
 
+            // "Every action" (M16) -- any skill use grants ultimate charge, not just BA
+            // like the MP bonus above. The ultimate itself drains the gauge instead of
+            // adding to it -- it just consumed the whole bar, granting more the same turn
+            // would be a (harmless but confusing) residual charge.
+            if (skill == unit.Definition.ultimateSkill)
+                unit.SpendUltimateCharge();
+            else
+                unit.GainUltimateCharge(UltimateChargePerAction);
+
             bool isAoe = skill.pattern != null && skill.pattern.areaOffsets.Count > 1;
             var hitTargets = isAoe
                 ? TargetResolver.GetAreaTargets(unit, skill, target.Column, World.AllUnits)
                 : new List<BattleUnit> { target };
 
+            // Accuracy (M16) only applies to offensive skills -- heals/buffs never miss,
+            // matching genre convention, so ally-targeting skills skip the roll entirely
+            // and always "hit" every target in hitTargets. Rolled once per target up
+            // front (not per branch) since both the status-effect application below and
+            // the damage loop further down need to agree on who actually got hit.
+            bool isOffensive = !skill.targetsAllies;
+            var wasHit = hitTargets.ToDictionary(h => h,
+                h => !isOffensive || UnityEngine.Random.value < DamageCalculator.HitChance(unit, h));
+
             // Applied up front, before the heal/mana/damage branches below (each of
             // which returns hitTargets immediately once done) -- a status effect isn't
             // tied to which of those branches fires, so it can't live inside any one of
-            // them without duplicating this across all three.
+            // them without duplicating this across all three. Gated on wasHit so a missed
+            // offensive attack doesn't still land its status effect.
             if (skill.inflictsStatus != StatusEffectType.None)
             {
                 foreach (var hit in hitTargets)
                 {
+                    if (!wasHit[hit]) continue;
                     hit.ApplyStatus(skill.inflictsStatus, skill.statusMagnitude, skill.statusDuration);
                     LogLine($"{hit.Definition.displayName} is affected by {skill.inflictsStatus}.");
                 }
@@ -555,8 +630,15 @@ namespace Game.Battle
 
             foreach (var hit in hitTargets)
             {
+                if (!wasHit[hit])
+                {
+                    LogLine($"{unit.Definition.displayName} misses {hit.Definition.displayName}.");
+                    continue;
+                }
+
                 int distance = TargetResolver.ColumnDistance(unit, hit);
-                int damage = DamageCalculator.ComputeDamage(unit, hit, skill, distance);
+                bool isCrit = UnityEngine.Random.value < unit.Stats.critRate;
+                int damage = DamageCalculator.ComputeDamage(unit, hit, skill, distance, isCrit);
                 // Dev-convenience multipliers for speeding through battles while the game
                 // is being built -- boosts damage the player deals, softens damage the
                 // player takes. 1x on both is the real, untuned rate.
@@ -565,8 +647,11 @@ namespace Game.Battle
                     : Settings.DamageReceivedMultiplier;
                 damage = Mathf.Max(0, Mathf.RoundToInt(damage * mult));
                 hit.ApplyDamage(damage);
-                LogLine($"{unit.Definition.displayName} hits {hit.Definition.displayName} for {damage}.");
-                if (Settings.ShowDamageNumbers) SpawnDamageNumber(hit, damage.ToString(), Color.white);
+                hit.DamageTakenSinceLastTurn += damage;
+                LogLine(isCrit
+                    ? $"{unit.Definition.displayName} CRITS {hit.Definition.displayName} for {damage}!"
+                    : $"{unit.Definition.displayName} hits {hit.Definition.displayName} for {damage}.");
+                if (Settings.ShowDamageNumbers) SpawnDamageNumber(hit, damage.ToString(), isCrit ? new Color(1f, 0.75f, 0.2f) : Color.white);
                 _visuals.FlashHit(hit);
                 _visuals.PlayImpactFx(hit, skill);
                 if (_visuals.HasReactionClip(hit)) _visuals.PlayReactionClip(hit);

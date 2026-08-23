@@ -267,16 +267,34 @@ namespace Game.Battle
             if (goB != null) goB.transform.position = toB;
         }
 
-        /// <summary>Re-applies every unit's dead/alive tint from current HP -- needed
-        /// after BattleHistory.Restore snapshots HP back onto units outside the normal
+        static readonly Color DeadTint = new(0.35f, 0.35f, 0.35f, 0.6f);
+        static readonly Color BrokenTint = new(0.55f, 0.55f, 0.55f, 1f);
+
+        /// <summary>Dead overrides broken (a corpse doesn't need two tints), otherwise
+        /// broken (M16, "for now make them slightly darker" per the project owner) is the
+        /// only other tint state today.</summary>
+        static Color UnitTint(BattleUnit unit)
+        {
+            if (!unit.IsAlive) return DeadTint;
+            if (unit.StatusEffects.Any(s => s.Type == StatusEffectType.Break)) return BrokenTint;
+            return Color.white;
+        }
+
+        /// <summary>Re-applies every unit's dead/alive/broken tint -- needed after
+        /// BattleHistory.Restore snapshots HP back onto units outside the normal
         /// ApplyDamage path (undo can revive a unit SyncDefeated already greyed out).</summary>
         public void SyncAll(BattleWorld world)
         {
             foreach (var unit in world.AllUnits)
-            {
-                if (!_unitRenderers.TryGetValue(unit, out var sr)) continue;
-                sr.color = unit.IsAlive ? Color.white : new Color(0.35f, 0.35f, 0.35f, 0.6f);
-            }
+                if (_unitRenderers.TryGetValue(unit, out var sr)) sr.color = UnitTint(unit);
+        }
+
+        /// <summary>Re-applies just `unit`'s dead/alive/broken tint -- called right after
+        /// BattleController.RunBattle ticks status effects, the one point in the turn loop
+        /// where Break can either newly apply or just have expired.</summary>
+        public void SyncStatusTint(BattleUnit unit)
+        {
+            if (_unitRenderers.TryGetValue(unit, out var sr)) sr.color = UnitTint(unit);
         }
 
         /// <summary>Immediately (no tween) snaps every unit back to its dock position and
@@ -312,7 +330,7 @@ namespace Game.Battle
         public void SyncDefeated(BattleUnit unit)
         {
             if (!unit.IsAlive && _unitRenderers.TryGetValue(unit, out var sr))
-                sr.color = new Color(0.35f, 0.35f, 0.35f, 0.6f);
+                sr.color = DeadTint;
         }
 
         const float FxWorldHeight = 1.8f;

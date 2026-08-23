@@ -80,6 +80,18 @@ namespace Game.Battle
             gameObject.SetActive(false);
         }
 
+        /// <summary>Hard ceiling on both the "waiting for Prepare()" and "waiting for
+        /// playback to finish" loops below, in real seconds (Time.realtimeSinceStartup --
+        /// deliberately not Time.time/deltaTime, so this can't itself get stuck if
+        /// something ever sets Time.timeScale to 0 mid-clip). Found and added after a
+        /// real soft-lock report (M16): the acting unit's whole turn -- and therefore
+        /// BattleController.RunBattle's entire coroutine -- blocks on this method with no
+        /// other timeout anywhere in the call chain, so a VideoPlayer that never actually
+        /// prepares/finishes (root cause unconfirmed) hangs the whole battle, recoverable
+        /// only via Undo. This can't fix an unconfirmed root cause, but it guarantees the
+        /// turn always eventually proceeds instead of hanging forever.</summary>
+        const float PlayTimeoutSeconds = 5f;
+
         /// <summary>Plays entry.clip chroma-keyed at BattleLayout.TargetUnitHeight world
         /// units tall (matching the sprite it's standing in for), invoking onImpact once
         /// per frame threshold in entry.impactFrames as playback crosses it. No-ops
@@ -105,11 +117,22 @@ namespace Game.Battle
 
             gameObject.SetActive(true);
             _player.Prepare();
-            while (!_player.isPrepared) yield return null;
+            float deadline = Time.realtimeSinceStartup + PlayTimeoutSeconds;
+            while (!_player.isPrepared && Time.realtimeSinceStartup < deadline) yield return null;
+            if (!_player.isPrepared)
+            {
+                Debug.LogWarning($"[AI.Game] VideoPlayer never prepared '{entry.clip.name}' within "
+                    + $"{PlayTimeoutSeconds}s -- skipping this clip instead of hanging the turn.");
+                gameObject.SetActive(false);
+                Destroy(_rt);
+                _rt = null;
+                yield break;
+            }
             _player.Play();
 
             var fired = entry.impactFrames.Count > 0 ? new bool[entry.impactFrames.Count] : Array.Empty<bool>();
-            while (_player.isPlaying)
+            deadline = Time.realtimeSinceStartup + PlayTimeoutSeconds;
+            while (_player.isPlaying && Time.realtimeSinceStartup < deadline)
             {
                 for (int i = 0; i < fired.Length; i++)
                 {
@@ -119,6 +142,9 @@ namespace Game.Battle
                 }
                 yield return null;
             }
+            if (_player.isPlaying)
+                Debug.LogWarning($"[AI.Game] VideoPlayer playback of '{entry.clip.name}' didn't finish "
+                    + $"within {PlayTimeoutSeconds}s -- cutting it short instead of hanging the turn.");
 
             gameObject.SetActive(false);
             Destroy(_rt);

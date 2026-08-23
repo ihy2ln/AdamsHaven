@@ -22,6 +22,16 @@ namespace Game.Battle
         public int CurrentHp;
         public int CurrentMp;
 
+        /// <summary>Damage taken since this unit's own turn last resolved -- checked
+        /// against a threshold right before their next turn (BattleController.RunBattle)
+        /// to decide whether they enter Break, then reset regardless of the outcome so
+        /// each cycle starts fresh. See StatusEffectType.Break's doc.</summary>
+        public int DamageTakenSinceLastTurn;
+
+        public const int MaxUltimateCharge = 100;
+        public int CurrentUltimateCharge;
+        public bool IsUltimateReady => CurrentUltimateCharge >= MaxUltimateCharge;
+
         public readonly List<StatusEffectInstance> StatusEffects = new();
 
         public bool IsAlive => CurrentHp > 0;
@@ -44,6 +54,14 @@ namespace Game.Battle
 
         public void SpendMp(int amount) => CurrentMp = Mathf.Max(0, CurrentMp - amount);
         public void RestoreMp(int amount) => CurrentMp = Mathf.Min(MaxMp, CurrentMp + amount);
+
+        public void GainUltimateCharge(int amount) =>
+            CurrentUltimateCharge = Mathf.Clamp(CurrentUltimateCharge + amount, 0, MaxUltimateCharge);
+
+        /// <summary>Called once the ultimate actually fires (BattleController) -- always
+        /// drains the gauge to empty; there's no partial-cost ultimate in this design,
+        /// unlike MP-cost Skill Moves.</summary>
+        public void SpendUltimateCharge() => CurrentUltimateCharge = 0;
 
         /// <summary>Full restore -- not called by anything in the battle scene today.
         /// Provided as the hook a future farm/town "sleep to recover" system should call;
@@ -68,14 +86,24 @@ namespace Game.Battle
 
         public bool IsStunned => StatusEffects.Any(s => s.Type == StatusEffectType.Stun);
 
+        /// <summary>True if this unit's turn should be skipped entirely -- Stun (skill-
+        /// inflicted) or Break (M16, damage-threshold-triggered) both incapacitate the
+        /// same way. Use this instead of IsStunned for the actual turn-skip check
+        /// (BattleController.RunBattle); IsStunned stays specifically about Stun for
+        /// anything that cares which of the two actually applied.</summary>
+        public bool IsIncapacitated => StatusEffects.Any(s => s.Type == StatusEffectType.Stun || s.Type == StatusEffectType.Break);
+
         /// <summary>Sum of AttackUp minus sum of AttackDown, as a multiplier against
         /// DamageCalculator's offense stat (1.0 = no effect). Read fresh every time
         /// rather than cached -- effects change turn to turn and there's no dirty-flag
         /// plumbing to invalidate a cache correctly.</summary>
         public float AttackMultiplier => 1f + NetMagnitude(StatusEffectType.AttackUp) - NetMagnitude(StatusEffectType.AttackDown);
 
-        /// <summary>Same shape as AttackMultiplier, against DamageCalculator's defense stat.</summary>
-        public float DefenseMultiplier => 1f + NetMagnitude(StatusEffectType.DefenseUp) - NetMagnitude(StatusEffectType.DefenseDown);
+        /// <summary>Same shape as AttackMultiplier, against DamageCalculator's defense
+        /// stat -- also folds in Break's Magnitude (M16) the same way DefenseDown works,
+        /// since "broken" is specifically the state of taking bonus damage while down.</summary>
+        public float DefenseMultiplier => 1f + NetMagnitude(StatusEffectType.DefenseUp)
+            - NetMagnitude(StatusEffectType.DefenseDown) - NetMagnitude(StatusEffectType.Break);
 
         float NetMagnitude(StatusEffectType type) => StatusEffects.Where(s => s.Type == type).Sum(s => s.Magnitude);
 

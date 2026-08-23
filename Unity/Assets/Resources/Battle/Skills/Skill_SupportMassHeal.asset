@@ -17,7 +17,7 @@ MonoBehaviour:
   description: 
   pool: 0
   classType: 0
-  element: 0
+  element: 2
   pattern: {fileID: 11400000, guid: f3b0a875a2198eb4c8a92d5ab0fb746a, type: 2}
   mpCost: 35
   cooldown: 0
@@ -30,4 +30,5 @@ MonoBehaviour:
   statusMagnitude: 0
   statusDuration: 0
   clipKey: basicAttack
+  effect: {fileID: 0}
   rollWeight: 1

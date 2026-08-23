@@ -14,12 +14,19 @@ namespace Game.Battle
         Camera _cam;
         BattleVisuals _visuals;
         GUIStyle _title, _body, _name, _big, _sub, _dmg, _btn, _smallBtn, _iconBtn, _prompt, _actorName, _logEntry, _logRound, _toggle, _barLabel;
+        Texture2D _ultGradientTex;
 
         bool _showLog;
         Vector2 _logScroll;
         bool _showSettings;
         bool _showKeybinds;
         bool _confirmRestart;
+
+        // M16: tap a unit's name in the roster to inspect its full stats (single-unit
+        // popup); the pause menu's "Unit Stats" instead lists everyone at once.
+        BattleUnit _inspectedUnit;
+        bool _showStats;
+        Vector2 _statsScroll;
 
         // Tap the "SM" icon to toggle the Skill Move list -- see DrawActionMenu. This was
         // originally press-and-hold (0.35s), which read as an unresponsive button: a tap
@@ -93,6 +100,16 @@ namespace Game.Battle
             _logRound = new GUIStyle(GUI.skin.label) { fontSize = 12, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.91f, 0.69f, 0.35f) } };
             _toggle = new GUIStyle(GUI.skin.toggle) { fontSize = 14, normal = { textColor = new Color(0.94f, 0.90f, 0.83f) } };
             _barLabel = new GUIStyle(GUI.skin.label) { fontSize = 9, alignment = TextAnchor.MiddleCenter, normal = { textColor = Color.white } };
+
+            // 64x1 full-hue-cycle strip, sampled 0..pct across its U axis by
+            // DrawUltimateBarFill -- as the gauge fills, progressively more of the
+            // rainbow reveals rather than the whole strip just fading in, so it visibly
+            // reads as "gradient rainbow hex themed" per the project owner's spec.
+            const int GradientWidth = 64;
+            _ultGradientTex = new Texture2D(GradientWidth, 1, TextureFormat.RGB24, false) { wrapMode = TextureWrapMode.Clamp };
+            for (int i = 0; i < GradientWidth; i++)
+                _ultGradientTex.SetPixel(i, 0, Color.HSVToRGB((float)i / GradientWidth, 0.85f, 1f));
+            _ultGradientTex.Apply();
         }
 
         void OnGUI()
@@ -102,6 +119,7 @@ namespace Game.Battle
             int w = Screen.width, h = Screen.height;
 
             GUI.Label(new Rect(0, 12, w, 30), $"AI.Game -- Battle ({(_ctrl.ManualMode ? "manual" : "auto")})", _title);
+            DrawTurnOrderStrip(w);
             DrawModeToggle(w);
             DrawUndoRedoButtons(w);
             DrawPauseButton(w);
@@ -120,6 +138,7 @@ namespace Game.Battle
             if (_ctrl.Phase == ActionPhase.ChooseTarget) DrawTargetPrompt(w);
             if (_showLog) DrawLogPanel(w, h);
             if (_showKeybinds) DrawKeybindPanel(w, h);
+            if (_inspectedUnit != null) DrawUnitStatsPanel(_inspectedUnit, w, h);
 
             if (_ctrl.Outcome != BattleOutcome.InProgress && !_ctrl.Paused) DrawOutcomeBanner(w, h);
             if (_ctrl.Paused) DrawPauseOverlay(w, h);
@@ -164,7 +183,7 @@ namespace Game.Battle
                 "Ctrl+Y -- redo turn",
                 "R -- restart (after battle ends)",
                 "Click -- choose a highlighted target",
-                "BA/SM/R/S/I -- tap. SM/I open a list; tap again to close",
+                "BA/SM/U/R/S/I -- tap. SM/I open a list; tap again to close. U needs a full ultimate gauge",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -217,22 +236,28 @@ namespace Game.Battle
         }
 
         // Compact per-unit roster readout: name, a thin HP bar, a thinner MP bar below it,
+        // an ultimate-gauge bar (M16) below that, a break-progress bar (M16) below that,
         // and (M13) a status-tag line squeezed into the gap before the next unit.
-        const float BarWidth = 160f, HpHeight = 11f, MpHeight = 6f, NameHeight = 13f, BarGap = 2f, UnitGap = 20f;
+        const float BarWidth = 160f, HpHeight = 11f, MpHeight = 6f, UltHeight = 6f, BreakHeight = 4f, NameHeight = 13f, BarGap = 2f, UnitGap = 20f;
 
         void DrawRoster(IEnumerable<BattleUnit> units, float x, float y, bool rightAligned)
         {
             foreach (var unit in units)
             {
                 DrawUnitBars(x, y, unit, rightAligned);
-                y += NameHeight + HpHeight + BarGap + MpHeight + UnitGap;
+                y += NameHeight + HpHeight + BarGap + MpHeight + BarGap + UltHeight + BarGap + BreakHeight + UnitGap;
             }
         }
 
         void DrawUnitBars(float x, float y, BattleUnit unit, bool rightAligned)
         {
+            // A label styled as a Button (GUI.skin.label has no button background
+            // texture, so this looks identical to a plain name label) -- tap a unit's
+            // name to inspect its full stats (M16). Toggle, matching every other
+            // popup-open button in this HUD.
             var nameStyle = new GUIStyle(_name) { alignment = rightAligned ? TextAnchor.UpperRight : TextAnchor.UpperLeft };
-            GUI.Label(new Rect(x, y, BarWidth, NameHeight), unit.Definition.displayName, nameStyle);
+            if (GUI.Button(new Rect(x, y, BarWidth, NameHeight), unit.Definition.displayName, nameStyle))
+                _inspectedUnit = _inspectedUnit == unit ? null : unit;
             y += NameHeight;
 
             var hpRect = new Rect(x, y, BarWidth, HpHeight);
@@ -247,7 +272,24 @@ namespace Game.Battle
             GUI.Box(mpRect, GUIContent.none);
             float mpPct = unit.MaxMp > 0 ? (float)unit.CurrentMp / unit.MaxMp : 0f;
             DrawBarFill(mpRect, mpPct, rightAligned, new Color(0.2f, 0.45f, 1f));
-            y += MpHeight + 1f;
+            y += MpHeight + BarGap;
+
+            var ultRect = new Rect(x, y, BarWidth, UltHeight);
+            GUI.Box(ultRect, GUIContent.none);
+            float ultPct = (float)unit.CurrentUltimateCharge / BattleUnit.MaxUltimateCharge;
+            DrawUltimateBarFill(ultRect, ultPct, rightAligned);
+            y += UltHeight + BarGap;
+
+            // Break progress (M16) -- how close `unit` is to the damage-since-last-turn
+            // threshold that triggers Break (BattleController.BreakDamageThresholdFraction),
+            // not how close they are to recovering from an already-active one. Lets a
+            // player see danger building before the status tag/sprite-darken actually fire.
+            var breakRect = new Rect(x, y, BarWidth, BreakHeight);
+            GUI.Box(breakRect, GUIContent.none);
+            float breakThreshold = BattleController.BreakDamageThresholdFraction * unit.Stats.hp;
+            float breakPct = breakThreshold > 0f ? unit.DamageTakenSinceLastTurn / breakThreshold : 0f;
+            DrawBarFill(breakRect, breakPct, rightAligned, new Color(0.85f, 0.25f, 0.15f));
+            y += BreakHeight + 1f;
 
             if (unit.StatusEffects.Count > 0)
             {
@@ -272,9 +314,60 @@ namespace Game.Battle
                 StatusEffectType.Poison => "PSN",
                 StatusEffectType.Regen => "REGEN",
                 StatusEffectType.Stun => "STUN",
+                StatusEffectType.Break => "BRK",
                 _ => effect.Type.ToString(),
             };
             return $"{abbrev}({effect.RemainingTurns})";
+        }
+
+        const float UltRotationHz = 0.6f;
+
+        /// <summary>Ultimate gauge fill (M16): while charging, a rainbow gradient reveals
+        /// progressively (0..pct of the strip's hue range, not the whole strip fading in)
+        /// via _ultGradientTex; once full, switches to a single hue that continuously
+        /// rotates through the wheel (Time.unscaledTime -- same "ignore pause/speed"
+        /// convention SM's old hold-timer used) so a ready ultimate visibly announces
+        /// itself even on a screen full of other bars.</summary>
+        void DrawUltimateBarFill(Rect rect, float pct, bool rightAligned)
+        {
+            pct = Mathf.Clamp01(pct);
+            float fillWidth = (rect.width - 2) * pct;
+            float fillX = rightAligned ? rect.x + 1 + (rect.width - 2 - fillWidth) : rect.x + 1;
+            var fill = new Rect(fillX, rect.y + 1, fillWidth, Mathf.Max(1f, rect.height - 2));
+            if (fillWidth <= 0f) return;
+
+            if (pct >= 1f)
+            {
+                float hue = (Time.unscaledTime * UltRotationHz) % 1f;
+                var old = GUI.color;
+                GUI.color = Color.HSVToRGB(hue, 0.85f, 1f);
+                GUI.DrawTexture(fill, Texture2D.whiteTexture);
+                GUI.color = old;
+                return;
+            }
+
+            var texCoords = rightAligned ? new Rect(1f - pct, 0f, pct, 1f) : new Rect(0f, 0f, pct, 1f);
+            GUI.DrawTextureWithTexCoords(fill, _ultGradientTex, texCoords);
+        }
+
+        /// <summary>Draws a Sprite's actual sub-rect (not its whole backing texture --
+        /// battleSprite may be packed in an atlas) into `rect`, with a solid-color border
+        /// so the turn-order strip (M16) reads faction at a glance without needing to
+        /// recognize the art itself. No-ops (draws just the border) if `sprite` is null --
+        /// same "missing art isn't an error" convention the rest of this project follows.</summary>
+        static void DrawSpriteIcon(Rect rect, Sprite sprite, Color borderColor)
+        {
+            var old = GUI.color;
+            GUI.color = borderColor;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = old;
+
+            if (sprite == null || sprite.texture == null) return;
+            var inner = new Rect(rect.x + 2, rect.y + 2, rect.width - 4, rect.height - 4);
+            var texRect = sprite.rect;
+            var tex = sprite.texture;
+            var uv = new Rect(texRect.x / tex.width, texRect.y / tex.height, texRect.width / tex.width, texRect.height / tex.height);
+            GUI.DrawTextureWithTexCoords(inner, tex, uv);
         }
 
         static void DrawBarFill(Rect rect, float pct, bool rightAligned, Color color)
@@ -295,6 +388,36 @@ namespace Game.Battle
         {
             string label = _ctrl.ManualMode ? "Mode: Manual (T)" : "Mode: Auto (T)";
             if (GUI.Button(new Rect(w / 2f - 90, 14, 180, 30), label, _btn)) _ctrl.ToggleMode();
+        }
+
+        const int TurnOrderSlots = 7;
+        const float TurnOrderIconSize = 32f, TurnOrderIconGap = 6f;
+
+        /// <summary>Small-portrait turn-order preview (M16), centred under the title/mode
+        /// toggle -- left to right, with the RIGHT edge being soonest to act (index 0 of
+        /// UpcomingTurnOrder sits in the rightmost slot) and each unit further out in the
+        /// order placed one slot further left. The number under each icon (1 = acts next)
+        /// makes the direction unambiguous even without comparing positions by eye.</summary>
+        void DrawTurnOrderStrip(int w)
+        {
+            var upcoming = _ctrl.UpcomingTurnOrder(TurnOrderSlots);
+            if (upcoming.Count == 0) return;
+
+            float step = TurnOrderIconSize + TurnOrderIconGap;
+            float totalWidth = upcoming.Count * TurnOrderIconSize + (upcoming.Count - 1) * TurnOrderIconGap;
+            float leftX = w / 2f - totalWidth / 2f;
+            float y = 50f;
+
+            for (int i = 0; i < upcoming.Count; i++)
+            {
+                // i=0 (soonest) goes in the rightmost slot; furthest-out goes leftmost.
+                float x = leftX + (upcoming.Count - 1 - i) * step;
+                var rect = new Rect(x, y, TurnOrderIconSize, TurnOrderIconSize);
+                var unit = upcoming[i];
+                var border = unit.Faction == Faction.Player ? new Color(0.3f, 0.55f, 1f) : new Color(0.9f, 0.3f, 0.3f);
+                DrawSpriteIcon(rect, unit.Definition.battleSprite, border);
+                GUI.Label(new Rect(x, y + TurnOrderIconSize, TurnOrderIconSize, 16f), (i + 1).ToString(), _barLabel);
+            }
         }
 
         void DrawTargetPrompt(int w)
@@ -319,8 +442,8 @@ namespace Game.Battle
             }
         }
 
-        // Small icon bar (BA/SM/R/S/I) anchored at the acting unit's feet, plus its name
-        // label just above the icons -- replaces the old full-width centred panel.
+        // Small icon bar (BA/SM/U/R/S/I) anchored at the acting unit's feet, plus its
+        // name label just above the icons -- replaces the old full-width centred panel.
         const float IconSize = 32f, IconGap = 4f;
 
         /// <summary>Keeps a centred UI block fully on screen -- returns the left edge X
@@ -360,9 +483,14 @@ namespace Game.Battle
 
             var basicAttack = _ctrl.BasicAttackSkill(actor);
             var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
+            var ultimateSkill = actor.Definition.ultimateSkill;
 
-            var labels = new[] { "BA", "SM", "R", "S", "I" };
-            var enabled = new[] { basicAttack != null, skillMoveOptions.Count > 0, _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem };
+            var labels = new[] { "BA", "SM", "U", "R", "S", "I" };
+            var enabled = new[]
+            {
+                basicAttack != null, skillMoveOptions.Count > 0, actor.IsUltimateReady && ultimateSkill != null,
+                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem,
+            };
 
             float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
             float startX = ClampedLeftX(anchorX, totalW);
@@ -372,8 +500,20 @@ namespace Game.Battle
             {
                 var rect = new Rect(startX + i * (IconSize + IconGap), y, IconSize, IconSize);
 
+                // The ready-ultimate glow is drawn as a separate, non-interactive border
+                // BEHIND the button rather than animating the button's own backgroundColor
+                // (the original approach) -- a GUI.Button whose paint state changes every
+                // single repaint is a known IMGUI foot-gun for eaten/missed clicks, and
+                // that's exactly what the project owner reported ("have to press multiple
+                // times ... for each unit", i.e. every unit's U button, the one button
+                // whose colour was animating). The button itself now always paints with a
+                // completely stable colour, identical in kind to BA/SM/R/S/I.
+                if (labels[i] == "U" && enabled[i]) DrawUltimateGlow(rect);
+
                 GUI.enabled = enabled[i];
+                GUI.backgroundColor = ActionButtonColor(labels[i]);
                 bool clicked = GUI.Button(rect, labels[i], _iconBtn);
+                GUI.backgroundColor = Color.white;
                 GUI.enabled = true;
                 if (!clicked) continue;
 
@@ -383,6 +523,7 @@ namespace Game.Battle
                     // Toggle, so a second tap backs out of the list without committing to
                     // a skill/item -- there's no other way to dismiss either popup.
                     case "SM": _showSkillList = !_showSkillList; break;
+                    case "U": _ctrl.ChooseSkill(ultimateSkill); break;
                     case "R": _ctrl.ChooseReposition(); break;
                     case "S": _ctrl.OpenBenchMenu(); break;
                     case "I": _showItemList = !_showItemList; break;
@@ -391,6 +532,40 @@ namespace Game.Battle
 
             if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
             if (_showItemList) DrawItemListPopup(startX + totalW / 2f, y);
+        }
+
+        /// <summary>Per-action tint for the BA/SM/U/R/S/I buttons (M16) -- a colour-coded
+        /// row reads faster than six identical grey buttons distinguished only by their
+        /// 2-letter label. Deliberately time-independent for every label including U --
+        /// see DrawUltimateGlow for why U's own animated highlight lives on a separate,
+        /// non-interactive layer instead of here.</summary>
+        static Color ActionButtonColor(string label) => label switch
+        {
+            "BA" => new Color(0.85f, 0.4f, 0.3f),
+            "SM" => new Color(0.35f, 0.55f, 0.9f),
+            "U" => new Color(0.75f, 0.6f, 0.2f),
+            "R" => new Color(0.4f, 0.75f, 0.45f),
+            "S" => new Color(0.6f, 0.45f, 0.8f),
+            "I" => new Color(0.35f, 0.8f, 0.55f),
+            _ => Color.white,
+        };
+
+        const float UltGlowThickness = 4f;
+
+        /// <summary>Animated rainbow border drawn BEHIND the U button's rect, purely
+        /// decorative and non-interactive -- a plain GUI.DrawTexture per side, not a
+        /// control, so it can never intercept or interfere with the click landing on the
+        /// actual Button. See the button-loop's own comment for why this was split out
+        /// from ActionButtonColor in the first place.</summary>
+        static void DrawUltimateGlow(Rect buttonRect)
+        {
+            var glow = Color.HSVToRGB((Time.unscaledTime * UltRotationHz) % 1f, 0.85f, 1f);
+            var r = new Rect(buttonRect.x - UltGlowThickness, buttonRect.y - UltGlowThickness,
+                buttonRect.width + UltGlowThickness * 2f, buttonRect.height + UltGlowThickness * 2f);
+            var old = GUI.color;
+            GUI.color = glow;
+            GUI.DrawTexture(r, Texture2D.whiteTexture);
+            GUI.color = old;
         }
 
         void DrawSkillListPopup(BattleUnit actor, IReadOnlyList<SkillDefinition> options, float anchorX, float iconsY)
@@ -523,8 +698,9 @@ namespace Game.Battle
 
             if (_confirmRestart) { DrawConfirmRestartPanel(w, h); return; }
             if (_showSettings) { DrawSettingsPanel(w, h); return; }
+            if (_showStats) { DrawAllUnitsStatsPanel(w, h); return; }
 
-            const float panelW = 320f, panelH = 320f;
+            const float panelW = 320f, panelH = 360f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x, panel.y + 10, panel.width, 30), "Paused", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
@@ -541,6 +717,9 @@ namespace Game.Battle
             GUI.enabled = true;
             by += 40;
 
+            if (GUI.Button(new Rect(bx, by, bw, 34), "Unit Stats", _btn)) _showStats = true;
+            by += 40;
+
             if (GUI.Button(new Rect(bx, by, bw, 34), "Settings", _btn)) _showSettings = true;
             by += 40;
 
@@ -552,6 +731,90 @@ namespace Game.Battle
             by += 40;
 
             if (GUI.Button(new Rect(bx, by, bw, 34), "Quit", _btn)) Application.Quit();
+        }
+
+        /// <summary>Compact multi-line stat readout shared by DrawUnitStatsPanel (one
+        /// unit, opened by tapping its name in the roster) and DrawAllUnitsStatsPanel (M16
+        /// -- every unit at once, from the pause menu). Advances `y` past what it drew.</summary>
+        void DrawStatLines(float x, ref float y, float width, BattleUnit unit)
+        {
+            var s = unit.Stats;
+            GUI.Label(new Rect(x, y, width, 20),
+                $"{unit.Definition.classType}  --  {unit.Definition.element}", _logEntry);
+            y += 20;
+            GUI.Label(new Rect(x, y, width, 20),
+                $"HP {unit.CurrentHp}/{s.hp}   MP {unit.CurrentMp}/{unit.MaxMp}   ULT {unit.CurrentUltimateCharge}/{BattleUnit.MaxUltimateCharge}",
+                _logEntry);
+            y += 20;
+            GUI.Label(new Rect(x, y, width, 20),
+                $"ATK {s.attack}   DEF {s.defense}   MAG {s.magic}   RES {s.resistance}   SPD {s.speed}", _logEntry);
+            y += 20;
+            GUI.Label(new Rect(x, y, width, 20),
+                $"Crit {s.critRate * 100f:0}%   CritDmg {(s.critDamage > 0f ? s.critDamage : DamageCalculator.DefaultCritDamage):0.0}x"
+                + $"   Acc {(s.accuracy > 0f ? s.accuracy : 1f) * 100f:0}%   Eva {s.evasion * 100f:0}%", _logEntry);
+            y += 20;
+            if (unit.StatusEffects.Count > 0)
+            {
+                GUI.Label(new Rect(x, y, width, 20), string.Join(" ", unit.StatusEffects.Select(StatusTag)), _logEntry);
+                y += 20;
+            }
+        }
+
+        /// <summary>Single-unit stats popup (M16) -- opened by tapping a unit's name in
+        /// the roster (BattleHud.DrawUnitBars), toggled shut the same way.</summary>
+        void DrawUnitStatsPanel(BattleUnit unit, int w, int h)
+        {
+            const float panelW = 320f;
+            // DrawStatLines always draws 4 fixed lines plus 1 more only when there are
+            // active status effects -- computed here, not measured by actually calling
+            // it, since IMGUI draws immediately and a real "dry run" would double-render.
+            float panelH = 50f + 4 * 20f + (unit.StatusEffects.Count > 0 ? 20f : 0f) + 34f;
+
+            var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(panel.x + 8, panel.y + 6, panel.width - 60, 26), unit.Definition.displayName, _title);
+            if (GUI.Button(new Rect(panel.x + panel.width - 44, panel.y + 6, 34, 26), "X", _smallBtn)) _inspectedUnit = null;
+
+            float y = panel.y + 38;
+            DrawStatLines(panel.x + 8, ref y, panel.width - 16, unit);
+
+            if (GUI.Button(new Rect(panel.x + 8, y + 4, panel.width - 16, 26), "Max Ultimate (Test)", _smallBtn))
+                _ctrl.DebugMaxUltimateCharge(unit);
+        }
+
+        /// <summary>Every unit at once (M16), from the pause menu's "Unit Stats" button --
+        /// per the project owner's spec, an alternative to inspecting one unit at a time.</summary>
+        void DrawAllUnitsStatsPanel(int w, int h)
+        {
+            const float panelW = 420f;
+            float panelH = Mathf.Min(h - 80, 480f);
+            var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+            GUI.Label(new Rect(panel.x + 8, panel.y + 6, panel.width - 100, 26), "Unit Stats", _title);
+            if (GUI.Button(new Rect(panel.x + panel.width - 90, panel.y + 8, 80, 26), "Back", _smallBtn)) _showStats = false;
+
+            var viewRect = new Rect(panel.x + 8, panel.y + 40, panel.width - 16, panel.height - 48);
+            var allUnits = _ctrl.World.PlayerUnits.Concat(_ctrl.World.EnemyUnits).ToList();
+            // 24 (name) + up to 5*20 (DrawStatLines' 4 fixed lines + 1 conditional status
+            // line) + a "Max Ultimate" test button + padding -- generous rather than
+            // exact, a little dead space per row beats clipping the status line.
+            const float rowH = 168f;
+            var contentRect = new Rect(0, 0, viewRect.width - 20, allUnits.Count * rowH);
+
+            _statsScroll = GUI.BeginScrollView(viewRect, _statsScroll, contentRect);
+            float rowY = 0f;
+            foreach (var unit in allUnits)
+            {
+                GUI.Box(new Rect(0, rowY, contentRect.width, rowH - 8), GUIContent.none);
+                GUI.Label(new Rect(6, rowY + 2, contentRect.width - 12, 20),
+                    $"{unit.Definition.displayName} ({unit.Faction})", _actorName);
+                float statsY = rowY + 24;
+                DrawStatLines(6, ref statsY, contentRect.width - 12, unit);
+                if (GUI.Button(new Rect(6, statsY + 4, contentRect.width - 12, 24), "Max Ultimate (Test)", _smallBtn))
+                    _ctrl.DebugMaxUltimateCharge(unit);
+                rowY += rowH;
+            }
+            GUI.EndScrollView();
         }
 
         void DrawConfirmRestartPanel(int w, int h)

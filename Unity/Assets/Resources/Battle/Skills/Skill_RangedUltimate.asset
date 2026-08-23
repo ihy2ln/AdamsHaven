@@ -10,25 +10,25 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: ba9d5eb2cf0efae4bb0f413fb8160851, type: 3}
-  m_Name: Skill_MeleePowerStrike
+  m_Name: Skill_RangedUltimate
   m_EditorClassIdentifier: Game.Data::Game.Data.SkillDefinition
-  skillId: skill_meleepowerstrike
-  displayName: Power Strike
+  skillId: skill_rangedultimate
+  displayName: Gale Storm
   description: 
   pool: 0
   classType: 0
-  element: 1
-  pattern: {fileID: 11400000, guid: f10e662dfa1b9ce41beb1e70a24293be, type: 2}
-  mpCost: 35
+  element: 3
+  pattern: {fileID: 11400000, guid: 5abe546421674d84d9717e57dc1e5f03, type: 2}
+  mpCost: 0
   cooldown: 0
-  power: 2
+  power: 0.9
   usesMagic: 0
-  isRanged: 0
+  isRanged: 1
   targetsAllies: 0
   restoresMana: 0
-  inflictsStatus: 4
-  statusMagnitude: 0.2
-  statusDuration: 2
+  inflictsStatus: 2
+  statusMagnitude: 0.3
+  statusDuration: 3
   clipKey: basicAttack
   effect: {fileID: 0}
   rollWeight: 1

@@ -15,7 +15,7 @@ MonoBehaviour:
   characterId: player_support
   displayName: Linnet
   classType: 4
-  element: 0
+  element: 2
   age: 3
   bio: 
   baseStats:
@@ -25,6 +25,10 @@ MonoBehaviour:
     magic: 20
     resistance: 12
     speed: 10
+    critRate: 0
+    critDamage: 0
+    accuracy: 0
+    evasion: 0
   movePoints: 4
   jump: 1
   costLateral: 2
@@ -37,6 +41,7 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 61ffa9e4efa945a4f8eaab440c661923, type: 2}
   - {fileID: 11400000, guid: c2d7fbd7f10c87144be4d16f422245f4, type: 2}
   - {fileID: 11400000, guid: aedc0c64262aa1046b92ebc936679f7a, type: 2}
+  ultimateSkill: {fileID: 11400000, guid: e9de506c33b4049478d80261ab1db080, type: 2}
   classSkillPool: []
   elementSkillPool: []
   growthPerLevel: 0.06
