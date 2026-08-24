@@ -183,6 +183,17 @@ real per-node content to make branching a genuine choice again rather than mostl
 illusory (every Enemy node was the same fight regardless of which one got picked). See
 item 25 below.
 
+M28 (this session) adds an MCP server and a small CLI for this project's Unity install --
+project-wide tooling, not a Battle-scene feature, but documented here the way
+`Tools/typecheck.sh` (M20) already was. Skipped Unity's own official MCP package
+(`com.unity.ai.assistant`) after finding a confirmed, version-matching bug: it livelocks
+the Editor's AssetDatabase on load on Unity 6.5.x, which is exactly what this project
+runs (6000.5.7f1). Installed **`com.coplaydev.unity-mcp`** instead (MIT, unaffected by
+that bug, pinned to `v10.1.2` in `Packages/manifest.json`), plus `uv`/`uvx` on this
+machine, which it needs to run its Python-based bridge server. New **`Tools/unity.sh`**
+(`status` / `typecheck` / `test`) wraps the batchmode commands this session ran
+by hand all along -- deliberately has no `build` subcommand; see item 26 below for why.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -1110,6 +1121,59 @@ item 25 below.
       with no branching, the same connectivity invariants `Generate()`'s random maps
       are held to, and a `DungeonRun` walking the whole sequence end to end hits
       exactly one choice per floor and completes precisely on the boss node.
+26. **MCP server + CLI for Unity -- M28.** Project-owner request: "add a CLI and MCP to
+    unity." Project-wide tooling, not part of the battle vertical slice itself, but
+    documented in the same "What changed" list `Tools/typecheck.sh` (M20) already lives
+    in, since both are this project's own dev infrastructure.
+    - **Which MCP, and why not the obvious one.** Unity's own first-party MCP
+      (`com.unity.ai.assistant`) was the natural first choice, but a search turned up a
+      confirmed, filed bug ([CoplayDev/unity-mcp#1219](https://github.com/CoplayDev/unity-mcp/issues/1219))
+      that's specifically about Unity's package, not the community one: on Unity
+      6000.5.x it livelocks the Editor's `AssetDatabase::InitialRefresh` on load, so the
+      Editor never finishes opening. Confirmed on 6000.5.1f1; this project runs
+      6000.5.7f1 -- close enough to treat as a live risk, not installed. Flagged to the
+      project owner before touching anything, since this is a shared project another AI
+      (ChatGPT, on the Farm side) was actively using at the time.
+    - **`com.coplaydev.unity-mcp`** installed instead -- MIT licensed, unrelated to and
+      unaffected by the bug above, 47 MCP tool entrypoints (scene/asset management,
+      script editing with Roslyn validation, running tests, building players). Added to
+      `Unity/Packages/manifest.json` as a git-URL dependency pinned to a verified real
+      tag, `#v10.1.2` (checked against the repo's actual release tags via `gh api`
+      rather than trusting the README's own example, which named an older `v10.0.0`).
+    - **`uv`/`uvx` installed on this machine** (`pip install uv`) -- the package's Python
+      bridge server runs through it. Confirmed both are on `PATH` after install.
+    - **One step this session couldn't finish**: connecting Claude Code to the running
+      bridge needs `Window > MCP for Unity > Configure All Detected Clients` inside an
+      interactive Editor session -- it writes the exact resolved server path/version
+      into Claude Code's MCP config, which depends on how Unity's package manager
+      actually resolved the git dependency on this machine. Hand-guessing that path
+      risked a config that looks right but silently points at nothing; letting the
+      Editor's own configurator write it is safer. **Needs the project owner's one-time
+      click** the next time they're in the Editor -- same "some things need an
+      interactive session" pattern this project has followed since M9.
+    - **`Tools/unity.sh`** (new): `status` (is Unity running? git status at a glance),
+      `typecheck` (delegates to `Tools/typecheck.sh`), `test` (runs the EditMode suite
+      headlessly, checks Unity isn't running first and explains why rather than
+      surfacing Unity's own cryptic lockfile error, parses and prints the pass/fail
+      summary). All three are commands this session already ran by hand repeatedly
+      across M17-M27; this just names them.
+    - **Deliberately no `build` subcommand.** `BuildAndroid.Build()`/
+      `BuildBattleStandalone.Build()` both call `BattleSceneBuilder.CreateBattleScene()`,
+      which calls `BattleAssetBuilder.Build()` -- `AssetDatabase.SaveAssets()`/
+      `CreateAsset()` run headlessly after a script change, in the same invocation, is
+      this project's own documented ScriptableObject-corruption risk (found and fought
+      across M9/M10, see "Known gaps"). Whether that's currently safe depends on whether
+      an interactive Editor session has "blessed" the current scripts since the last
+      change -- a judgment call this project has always made by hand, not something
+      that belongs one command away from muscle memory. Build through the Editor's own
+      menu instead.
+    - **Race condition observed, not a bug to fix**: `unity.sh test`'s own "is Unity
+      running" check can still lose a race against a third party (ChatGPT) starting
+      Unity in the moment between the check and the actual batchmode launch -- happened
+      once while testing this. Unity's own lockfile error is the correct fallback in
+      that case; there's no way to fully close a TOCTOU race like this when sharing a
+      live machine with another active agent, and the script already surfaces the real
+      error clearly rather than hiding it.
 
 ## Roster
 
@@ -1190,6 +1254,7 @@ costs the turn.
 | M25 | Rest and Treasure nodes get real function (per-unit Rest checklist, a granted potion) | *(not yet tagged)* |
 | M26 | Boss content -- the run's final node scales its existing roster's stats (`BossStatMultiplier`), no new content | *(not yet tagged)* |
 | M27 | Curated 5-node test dungeon (`GenerateCuratedTestRun`) replaces the randomized graph in `Boot()`: map1 fight, map2 fight, rest, treasure, boss | *(not yet tagged)* |
+| M28 | MCP server (`com.coplaydev.unity-mcp`) + `Tools/unity.sh` CLI -- project-wide tooling, not a battle-scene feature | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -1250,9 +1315,19 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
   screenshot its window via `PrintWindow` (Win32 API through PowerShell) rather than
   a plain screen capture — the exe isn't a "known installed app" so the usual
   computer-use tools can't target it by name.
+- **`Tools/unity.sh {status|typecheck|test}`** (M28) wraps the two safe headless
+  commands above (`test`, `typecheck`) into single commands instead of typing out the
+  full flag list every time -- see that file's own header for exactly what it does and
+  does not cover (deliberately no `build` subcommand).
 
 ## Known gaps
 
+- **The MCP server (M28) is installed but not connected to Claude Code yet.**
+  `com.coplaydev.unity-mcp` is in `Packages/manifest.json`; Unity resolves it the next
+  time it loads the project (git-URL package, needs a live project-open to fetch and
+  import, not something that finishes just by editing the manifest). Once it's showing
+  up in the Editor: `Window > MCP for Unity > Configure All Detected Clients` connects
+  Claude Code -- a one-time click this session couldn't do itself (see item 26).
 - **Resolved mid-session: an in-progress Farm refactor briefly broke the whole
   project's compile.** For a stretch of this session, `Assets/Scripts/Farm
   /FarmBootstrap.cs` referenced `FarmController`/`FarmHud`, deleted (uncommitted) as
