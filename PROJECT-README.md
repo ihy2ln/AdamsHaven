@@ -1322,12 +1322,30 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 
 ## Known gaps
 
-- **The MCP server (M28) is installed but not connected to Claude Code yet.**
-  `com.coplaydev.unity-mcp` is in `Packages/manifest.json`; Unity resolves it the next
-  time it loads the project (git-URL package, needs a live project-open to fetch and
-  import, not something that finishes just by editing the manifest). Once it's showing
-  up in the Editor: `Window > MCP for Unity > Configure All Detected Clients` connects
-  Claude Code -- a one-time click this session couldn't do itself (see item 26).
+- **The MCP server (M28) is registered with Claude Code but its bridge process has
+  never actually started -- one more click needed.** Progress since M28's own note
+  below: `Window > MCP for Unity > Configure All Detected Clients` *has* now been
+  clicked (confirmed in `Unity/Logs/Editor.log`: "Successfully registered with Claude
+  Code using HTTP transport", "Setup marked as completed"), and it wrote a real entry
+  into Claude Code's config (`~/.claude.json`, project key
+  `S:/AI/Game/test/AI.Game` → `UnityMCP: {"type":"http","url":"http://127.0.0.1:8080/mcp"}`).
+  But nothing is listening on port 8080 -- confirmed both by `curl` (empty reply) and by
+  reading the package's own source
+  (`Packages/.../Editor/Services/HttpAutoStartHandler.cs`): the bridge server only ever
+  starts two ways, and neither has happened yet -- (1) the **"Start Server" button**
+  inside the `Window > MCP for Unity` panel itself (a *different* control from the
+  "Configure All Detected Clients" one already clicked -- that one only writes config,
+  it doesn't launch anything), or (2) the **"Auto-Start on Editor Load" toggle** in that
+  same window's Advanced section (`EditorPrefs` key `MCPForUnity.AutoStartOnLoad`,
+  confirmed via registry (`HKCU\Software\Unity Technologies\Unity Editor 5.x`) to have
+  never been set -- still at its default `false`). **Next step: open
+  `Window > MCP for Unity` in the Editor and click "Start Server"** (or flip
+  Auto-Start on Editor Load, then reload/restart the Editor). This needs a human at the
+  keyboard -- the Editor window is shared and live (found it mid-session showing an
+  empty `Farm` scene), and dropdown menus don't show up in an automated screenshot
+  (`PrintWindow` only captures the target window itself, not the separate popup window
+  a menu renders as), so blindly clicking through it from here risked a wrong click on
+  a shared session. Deliberately left alone rather than guessed at.
 - **Resolved mid-session: an in-progress Farm refactor briefly broke the whole
   project's compile.** For a stretch of this session, `Assets/Scripts/Farm
   /FarmBootstrap.cs` referenced `FarmController`/`FarmHud`, deleted (uncommitted) as
@@ -1349,6 +1367,21 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
   `FarmAutoSetup`'s `[InitializeOnLoad]` guard only re-applies once per Editor session
   (`SessionState`-gated, unlike `BattleContentGuard`'s content check, which re-fires on
   every script recompile) -- resolves automatically the next time the Editor restarts.
+- **Fixed this session: `Tools/unity.sh status`/`test` always reported Unity as
+  closed, even while it was running.** `unity_running()` shells out to
+  `tasklist /FI "IMAGENAME eq Unity.exe"`, but Git Bash's automatic path-mangling
+  rewrites the bare `/FI` into a drive-relative path (`S:/AI/Git/FI`) before `tasklist`
+  ever sees it, so the command errored -- silently swallowed by the existing
+  `2>/dev/null` -- and `status` always printed "Unity: closed" regardless of reality.
+  Found by cross-checking `status`'s "closed" claim against a live Editor window
+  (PID confirmed via `tasklist`/`Get-Process`, screenshot showed the MCP-for-Unity
+  status bar and this project's own folder structure). This meant `unity.sh test`'s
+  own documented safety check -- refuse to run batchmode against a project an open
+  Editor is holding the lock on -- was never actually functioning; it would have run
+  straight into the lockfile conflict instead of refusing cleanly. Fixed by prefixing
+  both `tasklist` calls with `MSYS_NO_PATHCONV=1`. Verified: `status` now correctly
+  reports "Unity: RUNNING (3 process(es))" against the same live session that used to
+  read as closed.
 - **Resolved same session: M17's content is built and committed (content v9).** It
   shipped code-only at first -- the rebuild can't be done headlessly (it means
   `AssetDatabase.CreateAsset`/`SaveAssets()` after a script change, the documented

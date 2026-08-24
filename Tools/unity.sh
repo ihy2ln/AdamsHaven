@@ -48,13 +48,19 @@ UNITY_EXE="$UNITY_EDITOR/Unity.exe"
 unity_running() {
   # tasklist's /FI filter, not a plain grep, so this doesn't false-positive on an
   # unrelated process that happens to have "Unity" in its command line somewhere.
-  tasklist /FI "IMAGENAME eq Unity.exe" 2>/dev/null | grep -qi "Unity.exe"
+  # MSYS_NO_PATHCONV=1 is required here: Git Bash's path-mangling rewrites a bare
+  # "/FI" into a drive-relative path (e.g. "S:/AI/Git/FI") before tasklist ever sees
+  # it, which makes tasklist error out -- silently swallowed by 2>/dev/null, so this
+  # always reported "closed" regardless of whether Unity was actually running. Found
+  # this session when 'status' claimed Unity was closed while a live Editor window
+  # (with this exact project open) was sitting right there.
+  MSYS_NO_PATHCONV=1 tasklist /FI "IMAGENAME eq Unity.exe" 2>/dev/null | grep -qi "Unity.exe"
 }
 
 cmd_status() {
   echo "=== unity.sh status ==="
   if unity_running; then
-    n=$(tasklist /FI "IMAGENAME eq Unity.exe" 2>/dev/null | grep -ci "Unity.exe")
+    n=$(MSYS_NO_PATHCONV=1 tasklist /FI "IMAGENAME eq Unity.exe" 2>/dev/null | grep -ci "Unity.exe")
     echo "Unity: RUNNING ($n process(es) -- includes asset-import workers, not just the main Editor window)"
     echo "  -> 'test' will refuse to run (batchmode needs exclusive access to the project lock)."
     echo "  -> 'typecheck' still works fine."
