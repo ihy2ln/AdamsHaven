@@ -8,16 +8,44 @@ namespace Game.Battle
     /// Boots the battle scene at runtime -- no Inspector wiring required. Mirrors
     /// FarmBootstrap's pattern exactly. Attach to an empty GameObject in Battle.unity
     /// (or let AI.Game > Battle > Create Battle Scene create it).
+    ///
+    /// Owns the run's DungeonRun (M24) -- the branching-path structure the project
+    /// owner asked for, "just the structure" for now (placeholder visuals, placeholder
+    /// content behind everything but Enemy/Elite nodes). It lives here rather than on
+    /// BattleWorld because it has to survive across battles *and* camp visits, neither
+    /// of which owns the other -- BattleBootstrap's own GameObject is the one thing that
+    /// persists across every BootMap/BootCamp call (only its children get torn down),
+    /// so an instance field here is the natural home. See RunMap.cs for the graph
+    /// itself, DungeonRun.cs for position-tracking, and EnterNode below for how a
+    /// chosen node turns into an actual boot call.
     /// </summary>
     public class BattleBootstrap : MonoBehaviour
     {
+        DungeonRun _run;
+
         void Start() => Boot();
 
-        /// <summary>Parameterless entry point for Start()/the context menu -- always
-        /// map 0, fresh roster. The two-map sequence and full-battle restart both funnel
-        /// through BootMap below.</summary>
+        /// <summary>Parameterless entry point for Start()/the context menu/"Leave
+        /// dungeon" -- generates a fresh DungeonRun and auto-enters its first floor-0
+        /// node. Auto-picking rather than offering a choice here is a deliberate
+        /// simplification (M24): a brand-new run has no BattleWorld yet to source a
+        /// camp screen's party/bench/inventory from, and building one just to show a
+        /// single-battle choice isn't worth it yet -- the real branching choices start
+        /// showing at camp after this first fight ends. Revisit if "choose your very
+        /// first node too" turns out to matter.</summary>
         [ContextMenu("Boot Battle")]
-        public void Boot() => BootMap(0, null, null, null);
+        public void Boot()
+        {
+            _run = new DungeonRun(RunMapGenerator.Generate(Random.Range(int.MinValue, int.MaxValue)));
+            var start = _run.AvailableNextNodes();
+            // Prefer an Enemy node among floor 0's options over an inert placeholder
+            // one (floor 0 can roll Unknown too -- see RunMapGenerator.FirstFloorWeights)
+            // -- a first launch should always drop the player into an actual fight, the
+            // way every version of this project has before M24, not sometimes land them
+            // on a "nothing here yet" camp screen with nothing to compare it against.
+            var first = start.FirstOrDefault(n => n.Type == RunNodeType.Enemy) ?? start[0];
+            EnterNode(first, null, null, null, null);
+        }
 
         public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench,
             BattleInventory carryOverInventory, BattleRewards carryOverRewards = null)
@@ -51,22 +79,23 @@ namespace Game.Battle
             var ctrlGo = new GameObject("BattleController");
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<BattleController>();
+            // M18's dev skip (`N` / pause menu "Skip to Next Battle") stays wired to the
+            // flat mapIndex+1 sequence rather than the dungeon run -- it's an explicit
+            // testing shortcut for jumping between the two built MapDefinitions, not a
+            // move in the game, and was never meant to understand branching. Using it
+            // does leave `_run`'s position stale relative to whatever content actually
+            // loaded; that's an accepted, documented gap in a dev-only tool, not a bug.
             ctrl.OnRestartRequested += () => BootMap(0, null, null, null);
             ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList(),
                 world.Inventory, world.Banked);
-            // Escaping or quitting (M20) goes to camp rather than to another battle. The
-            // map index is deliberately NOT advanced then -- withdrawing from a fight
-            // doesn't clear it, so camp offers the same battle again. A win reaching camp
-            // (M23) is the opposite case: the party already cleared this map, so camp's
-            // own "what's next" should point at mapIndex + 1, exactly like "Next Battle"
-            // would -- CampScreen.NextBattleLine/OnContinueRequested don't know or care
-            // which button got them here, they just act on whatever index they're given.
-            ctrl.OnLeaveRequested += () => BootCamp(
-                ctrl.Outcome == BattleOutcome.PlayerVictory ? mapIndex + 1 : mapIndex, world, ctrl.Outcome);
-            // Retry Battle (M23) re-boots this same map -- mapIndex, not +1 -- with the
-            // party GoToCamp/RetryBattle already reset to entry state on the controller
-            // side (RestoreEntryState), and the win's own rewards already banked before
-            // this fires. A fresh attempt at the same fight, not a step forward.
+            // Escaping, quitting, or (M23) choosing Camp after a win all land here.
+            // BootCamp shows whatever DungeonRun.AvailableNextNodes() offers right now --
+            // it doesn't need to know why the player left, only what they're carrying.
+            ctrl.OnLeaveRequested += () => BootCamp(world, ctrl.Outcome);
+            // Retry Battle (M23) re-boots this same mapIndex/content -- not a node move,
+            // just a fresh attempt at what's already loaded, so DungeonRun's position is
+            // untouched. The party was already reset to entry state by
+            // BattleController.RetryBattle() before this fires.
             ctrl.OnRetryRequested += () => BootMap(mapIndex, world.PlayerUnits.ToList(), world.Bench.ToList(),
                 world.Inventory, world.Banked);
             ctrl.Init(world, visuals, cam, settings);
@@ -80,21 +109,62 @@ namespace Game.Battle
                 : "[AI.Game] Battle boot failed to load data -- run AI.Game > Battle > Build Assets From Manifest.");
         }
 
-        /// <summary>Tears the battle down and stands up the camp screen in its place
-        /// (M20). Same scene, different contents -- BootMap already worked this way, so
-        /// camp doesn't need a scene of its own (and Battle.unity isn't in the build
-        /// settings, so a second scene would need wiring that doesn't exist yet).
+        /// <summary>Which built MapDefinition a node's content maps to (M24). The
+        /// single biggest placeholder in this whole feature: every Enemy node in the
+        /// entire run reuses map 1's roster (Husk/Warden/Stinger) and every Elite node
+        /// reuses map 2's (Rotfang/Deadeye/Hexweaver, the tougher one) -- there's no
+        /// per-node content yet, so the same two fights repeat as the party climbs. That
+        /// was the explicit trade the project owner asked for this session ("just work
+        /// on the structure, we will be replacing the map look and icons") -- swap this
+        /// for real per-node content whenever it exists; every other piece of this
+        /// system (the graph, the traversal, the camp picker) is already built to not
+        /// care how many distinct battles there actually are behind it.</summary>
+        static int MapIndexForNode(RunMapNode node) => node.Type == RunNodeType.Elite ? 1 : 0;
+
+        /// <summary>Commits to `node`: advances DungeonRun's position, then boots
+        /// whatever that node type implies. Enemy/Elite boot a real battle; every other
+        /// type (Unknown/Merchant/Treasure/Rest) has no content behind it yet (M24 is
+        /// structure only) and just returns to camp having moved there, so the graph
+        /// traversal is fully exercised even though half its node types don't do
+        /// anything yet.
         ///
-        /// `mapIndex` is the battle the party just walked out of, not the next one:
-        /// leaving a fight doesn't clear it, so camp's "take on battle N" re-enters the
-        /// same map with the party restored to its entry state.</summary>
-        public void BootCamp(int mapIndex, BattleWorld world, BattleOutcome outcome)
+        /// `node` must be one of `_run.AvailableNextNodes()` -- both the initial
+        /// Boot() call and CampScreen's picker only ever offer nodes from that list, so
+        /// DungeonRun.MoveTo failing here would mean a caller passed something it
+        /// shouldn't have; logged rather than silently ignored so that bug wouldn't go
+        /// unnoticed.</summary>
+        void EnterNode(RunMapNode node, IReadOnlyList<BattleUnit> party, IReadOnlyList<BattleUnit> bench,
+            BattleInventory inventory, BattleRewards rewards)
         {
-            ClearChildren();
+            if (!_run.MoveTo(node.Id))
+            {
+                Debug.LogError($"[AI.Game] Tried to enter node {node.Id} ({node.Type}) but DungeonRun says it "
+                    + "isn't reachable from the current position -- this should never happen from the UI.");
+                return;
+            }
 
-            var party = world.PlayerUnits.ToList();
-            var bench = world.Bench.ToList();
+            switch (node.Type)
+            {
+                case RunNodeType.Enemy:
+                case RunNodeType.Elite:
+                    BootMap(MapIndexForNode(node), party, bench, inventory, rewards);
+                    break;
+                default:
+                    ShowCamp(party?.ToList() ?? new List<BattleUnit>(), bench?.ToList() ?? new List<BattleUnit>(),
+                        inventory, rewards,
+                        $"There's nothing here yet -- {node.Type} nodes aren't implemented (M24 is structure only). "
+                        + "Made camp instead.");
+                    break;
+            }
+        }
 
+        /// <summary>Tears the battle down and stands up the camp screen in its place
+        /// (M20; shows the dungeon map since M24). Same scene, different contents --
+        /// BootMap already worked this way, so camp doesn't need a scene of its own (and
+        /// Battle.unity isn't in the build settings, so a second scene would need
+        /// wiring that doesn't exist yet).</summary>
+        public void BootCamp(BattleWorld world, BattleOutcome outcome)
+        {
             // Three arrival lines, one per way of reaching camp (M20 escape/quit, M23
             // victory) -- each reads honestly about what actually happened, since this is
             // the player's first look at the outcome after the banner.
@@ -104,29 +174,35 @@ namespace Game.Battle
                 BattleOutcome.PlayerVictory => "Battle won. You made camp before pressing on.",
                 _ => "You walked away before it was worth anything. Nothing gained, nothing spent.",
             };
+            ShowCamp(world.PlayerUnits.ToList(), world.Bench.ToList(), world.Inventory, world.Banked, arrival);
+        }
+
+        /// <summary>Shared by BootCamp and EnterNode's no-content branch -- both end up
+        /// at the same screen with the same wiring, they just arrive with different
+        /// arrival text and (in EnterNode's case) party/bench lists that were already
+        /// extracted rather than pulled fresh from a BattleWorld.</summary>
+        void ShowCamp(List<BattleUnit> party, List<BattleUnit> bench, BattleInventory inventory,
+            BattleRewards rewards, string arrival)
+        {
+            ClearChildren();
 
             var campGo = new GameObject("CampScreen");
             campGo.transform.SetParent(transform, false);
             var camp = campGo.AddComponent<CampScreen>();
-            camp.Init(mapIndex, party, bench, world.Inventory, world.Banked, arrival);
-            camp.OnContinueRequested += () => BootMap(mapIndex, party, bench, world.Inventory, world.Banked);
+            camp.Init(_run, party, bench, inventory, rewards, arrival);
+            camp.OnNodeChosen += node => EnterNode(node, party, bench, inventory, rewards);
             camp.OnLeaveDungeonRequested += () =>
             {
                 // No home scene is wired to the battle slice yet -- Farm.unity exists and
                 // is the only scene in the build settings, but nothing connects the two
                 // (see PROJECT-README's "Known gaps"). Until that boundary is built,
-                // going home means starting over.
-                Debug.Log("[AI.Game] Left the dungeon -- no home scene wired yet, restarting the run.");
-                BootMap(0, null, null, null);
+                // going home means a fresh dungeon run, via Boot() -- same placeholder
+                // this button had before M24, just now also regenerating the map.
+                Debug.Log("[AI.Game] Left the dungeon -- no home scene wired yet, starting a fresh run.");
+                Boot();
             };
 
-            // mapIndex can equal BattleWorld.MapCount here (a win on the last map, see
-            // this method's own OnLeaveRequested wiring above) -- CampScreen's own
-            // "next battle" line and Take-On button both already handle that case
-            // ("dungeon is behind you", button disabled), this log just mirrors it rather
-            // than printing a nonsensical "battle 3/2".
-            string nextDesc = mapIndex < BattleWorld.MapCount ? $"next battle {mapIndex + 1}/{BattleWorld.MapCount}" : "no battles left";
-            Debug.Log($"[AI.Game] Camp booted after {outcome} ({nextDesc}).");
+            Debug.Log($"[AI.Game] Camp booted -- {_run.AvailableNextNodes().Count} node(s) available next. \"{arrival}\"");
         }
 
         void ClearChildren()

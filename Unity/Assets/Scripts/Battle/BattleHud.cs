@@ -705,11 +705,10 @@ namespace Game.Battle
 
         void DrawOutcomeBanner(int w, int h)
         {
-            // Escaped (M19) deliberately gets no "Next Battle" button even though the
-            // party is alive and a next map exists: fleeing is not progress. That's the
-            // whole cost of the action, and the only thing separating it from M18's
-            // skip, which is a dev convenience rather than a move in the game.
-            bool advancing = _ctrl.Outcome == BattleOutcome.PlayerVictory && _ctrl.World.HasNextMap;
+            // Escaped (M19) deliberately gets no advance-forward button even though the
+            // party is alive: fleeing is not progress. That's the whole cost of the
+            // action, and the only thing separating it from M18's skip, which is a dev
+            // convenience rather than a move in the game.
             string label = _ctrl.Outcome switch
             {
                 BattleOutcome.PlayerVictory => "VICTORY",
@@ -729,27 +728,22 @@ namespace Game.Battle
             }
             else if (_ctrl.Outcome == BattleOutcome.PlayerVictory)
             {
-                // Three ways forward from a win (M23), not just "Next Battle": Camp is a
-                // detour to rest/check stats/see what's next before committing, and Retry
+                // Two ways forward from a win (M23; "Next Battle" retired in M24): Camp
+                // is where progress actually happens now -- it shows the branching
+                // dungeon map and lets the player choose their next node, which a single
+                // auto-advance button can't do once there's more than one path. Retry
                 // re-fights this exact map with the party reset to how it stood walking
                 // in -- useful for a better run at the same fight rather than only ever
-                // pressing on. All three carry the win's own rewards forward; only Retry
-                // also resets HP/MP/status, since it's the one option asking for a fresh
+                // pressing on. Both carry the win's own rewards forward; only Retry also
+                // resets HP/MP/status, since it's the one option asking for a fresh
                 // attempt rather than a step onward.
-                string sub = advancing ? "The party presses onward, wounds and all" : "The dungeon is clear!";
-                GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
+                GUI.Label(new Rect(0, h / 2f, w, 30), "The party stands victorious", _sub);
 
                 const float bw = 160f, gap = 16f;
-                int count = advancing ? 3 : 2;
-                float totalW = count * bw + (count - 1) * gap;
+                float totalW = 2 * bw + gap;
                 float bx = w / 2f - totalW / 2f;
                 float by = h / 2f + 36;
 
-                if (advancing)
-                {
-                    if (GUI.Button(new Rect(bx, by, bw, 44), "Next Battle", _btn)) { _ctrl.AdvanceToNextMap(); return; }
-                    bx += bw + gap;
-                }
                 if (GUI.Button(new Rect(bx, by, bw, 44), "Camp", _btn)) { _ctrl.GoToCamp(); return; }
                 bx += bw + gap;
                 if (GUI.Button(new Rect(bx, by, bw, 44), "Retry Battle", _btn)) { _ctrl.RetryBattle(); return; }

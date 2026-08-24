@@ -7,19 +7,19 @@ using Game.Data;
 namespace Game.Battle
 {
     /// <summary>
-    /// The between-battles camp (M20) -- where the party lands after escaping or quitting
-    /// a fight, and the first thing in this project that exists outside a battle.
+    /// The between-battles camp (M20) -- where the party lands after escaping, quitting,
+    /// or winning, and the first thing in this project that exists outside a battle.
     ///
-    /// Four things, per the project owner's spec: what the next battle is, resting, a
-    /// stat overview, and leaving the dungeon for home. IMGUI like the rest of the
-    /// slice's UI, and booted by BattleBootstrap into the same scene rather than being a
-    /// scene of its own -- BootMap already tears the scene down and rebuilds it, so
-    /// "camp" is just a different thing to build.
+    /// Five things now, per the project owner's spec: a branching dungeon map to choose
+    /// the next node from (M24), resting, a stat overview, and leaving the dungeon for
+    /// home. IMGUI like the rest of the slice's UI, and booted by BattleBootstrap into
+    /// the same scene rather than being a scene of its own -- BootMap already tears the
+    /// scene down and rebuilds it, so "camp" is just a different thing to build.
     ///
     /// This is deliberately a screen, not a system. There's no camp economy, no time
-    /// passing, no encounter table -- Rest is the only thing that spends anything, and it
-    /// spends the materials M20 just started dropping. Everything here is the shape a
-    /// real camp would have, sized to what the slice can actually support today.
+    /// passing -- Rest is the only thing that spends anything, and it spends the
+    /// materials M20 started dropping. Everything here is the shape a real camp would
+    /// have, sized to what the slice can actually support today.
     /// </summary>
     public class CampScreen : MonoBehaviour
     {
@@ -31,33 +31,35 @@ namespace Game.Battle
         /// exists to weigh them against.</summary>
         public const int RestMaterialCostPerUnit = 1;
 
+        DungeonRun _run;
         BattleRewards _banked;
         List<BattleUnit> _party;
         List<BattleUnit> _bench;
         BattleInventory _inventory;
-        int _mapIndex;
         string _arrivalLine;
 
         bool _showStats;
         bool _showRest;
+        bool _showMap;
         readonly HashSet<BattleUnit> _restSelection = new();
         string _notice;
 
-        /// <summary>Raised when the player chooses to take on the next battle. Carries
-        /// nothing -- BattleBootstrap already holds everything the next map needs.</summary>
-        public event Action OnContinueRequested;
+        /// <summary>Raised when the player picks a node from the dungeon map (M24) --
+        /// the sole way forward now that progress branches. BattleBootstrap.EnterNode
+        /// is the only listener; it owns turning a node into an actual boot call.</summary>
+        public event Action<RunMapNode> OnNodeChosen;
 
         /// <summary>Raised by "Leave dungeon". No home scene is wired to the battle slice
         /// yet (Farm.unity exists but nothing connects the two -- see PROJECT-README's
-        /// gaps), so BattleBootstrap currently treats this as ending the run.</summary>
+        /// gaps), so BattleBootstrap currently treats this as starting a fresh run.</summary>
         public event Action OnLeaveDungeonRequested;
 
-        GUIStyle _title, _body, _btn, _heading;
+        GUIStyle _title, _body, _btn, _heading, _nodeBtn;
 
-        public void Init(int mapIndex, List<BattleUnit> party, List<BattleUnit> bench,
+        public void Init(DungeonRun run, List<BattleUnit> party, List<BattleUnit> bench,
             BattleInventory inventory, BattleRewards banked, string arrivalLine)
         {
-            _mapIndex = mapIndex;
+            _run = run;
             _party = party ?? new List<BattleUnit>();
             _bench = bench ?? new List<BattleUnit>();
             _inventory = inventory;
@@ -72,6 +74,7 @@ namespace Game.Battle
             _heading = new GUIStyle(GUI.skin.label) { fontSize = 14, fontStyle = FontStyle.Bold, normal = { textColor = new Color(0.85f, 0.8f, 0.6f) } };
             _body = new GUIStyle(GUI.skin.label) { fontSize = 12, wordWrap = true, normal = { textColor = new Color(0.88f, 0.88f, 0.9f) } };
             _btn = new GUIStyle(GUI.skin.button) { fontSize = 13 };
+            _nodeBtn = new GUIStyle(GUI.skin.button) { fontSize = 11, alignment = TextAnchor.MiddleCenter, wordWrap = true };
         }
 
         void OnGUI()
@@ -85,6 +88,7 @@ namespace Game.Battle
 
             if (_showStats) { DrawStatsPanel(w, h); return; }
             if (_showRest) { DrawRestPanel(w, h); return; }
+            if (_showMap) { DrawDungeonMapPanel(w, h); return; }
 
             const float panelW = 460f, panelH = 470f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
@@ -113,10 +117,10 @@ namespace Game.Battle
             GUI.Label(new Rect(x, y, cw, 20), PartySummary(), _body);
             y += 26f;
 
-            GUI.Label(new Rect(x, y, cw, 20), "Next", _heading);
+            GUI.Label(new Rect(x, y, cw, 20), "Ahead", _heading);
             y += 20f;
-            GUI.Label(new Rect(x, y, cw, 34), NextBattleLine(), _body);
-            y += 38f;
+            GUI.Label(new Rect(x, y, cw, 20), AheadLine(), _body);
+            y += 26f;
 
             if (!string.IsNullOrEmpty(_notice))
             {
@@ -133,10 +137,9 @@ namespace Game.Battle
             if (GUI.Button(new Rect(x, y, cw, 34), "Stat Overview", _btn)) _showStats = true;
             y += 40f;
 
-            bool hasNext = _mapIndex < BattleWorld.MapCount;
-            GUI.enabled = hasNext;
-            if (GUI.Button(new Rect(x, y, cw, 34), hasNext ? NextBattleButtonLabel() : "No battles left", _btn))
-                OnContinueRequested?.Invoke();
+            GUI.enabled = !_run.IsComplete;
+            if (GUI.Button(new Rect(x, y, cw, 34), _run.IsComplete ? "Dungeon cleared" : "Dungeon Map", _btn))
+                _showMap = true;
             GUI.enabled = true;
             y += 40f;
 
@@ -160,26 +163,99 @@ namespace Game.Battle
                 .Select(u => $"{u.Definition.displayName} {u.CurrentHp}/{u.Stats.hp}"));
         }
 
-        /// <summary>Which fight is next and who's in it. Reads the map's own enemy
-        /// placements rather than a hardcoded list, so this stays correct if the roster
-        /// or the map count changes.</summary>
-        string NextBattleLine()
+        /// <summary>One-line summary of what the "Dungeon Map" button opens onto -- how
+        /// many paths branch from here right now, so the player has a reason to open it
+        /// before committing.</summary>
+        string AheadLine()
         {
-            if (_mapIndex >= BattleWorld.MapCount) return "The dungeon is behind you. Nothing ahead but the road home.";
-
-            var map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{_mapIndex + 1}");
-            if (map == null) return $"Battle {_mapIndex + 1} of {BattleWorld.MapCount}.";
-
-            var names = map.enemies
-                .Where(e => e.character != null)
-                .Select(e => e.character.displayName)
-                .ToList();
-
-            string who = names.Count > 0 ? string.Join(", ", names) : "unknown";
-            return $"Battle {_mapIndex + 1} of {BattleWorld.MapCount} -- {who}.";
+            if (_run.IsComplete) return "The dungeon is cleared. Nothing ahead but the road home.";
+            int count = _run.AvailableNextNodes().Count;
+            return count == 1 ? "One path ahead." : $"{count} paths branch ahead -- choose one.";
         }
 
-        string NextBattleButtonLabel() => $"Take on battle {_mapIndex + 1}";
+        /// <summary>The dungeon map (M24) -- floors as rows, nodes as buttons. Explicitly
+        /// placeholder presentation: the project owner's own direction was "just work on
+        /// the structure, we will be replacing the map look and icons," so this renders
+        /// the real graph (RunMap/DungeonRun) with plain coloured buttons rather than the
+        /// branching dotted-path artwork it'll eventually become. Floor 0 at the top, the
+        /// final convergence node at the bottom -- an arbitrary layout choice for an
+        /// IMGUI grid, not a meaningful one; flip it whenever the real map art picks a
+        /// direction.</summary>
+        void DrawDungeonMapPanel(int w, int h)
+        {
+            const float panelW = 580f, rowH = 58f;
+            float panelH = Mathf.Min(h - 60f, 120f + _run.Map.FloorCount * rowH);
+            var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+
+            float x = panel.x + 16f, cw = panel.width - 32f, y = panel.y + 12f;
+            GUI.Label(new Rect(x, y, cw, 26), "Dungeon Map", _title);
+            y += 26f;
+            GUI.Label(new Rect(x, y, cw, 18),
+                "Placeholder layout -- real art and icons come later. Green = choose one; "
+                + "gold = where you are; grey = already behind you.", _body);
+            y += 26f;
+
+            var available = new HashSet<int>(_run.AvailableNextNodes().Select(n => n.Id));
+            float cellW = cw / Mathf.Max(1, RunMapGenerator.MaxFloorWidth);
+
+            for (int floor = 0; floor < _run.Map.FloorCount; floor++)
+            {
+                var nodes = _run.Map.NodesInFloor(floor);
+                float rowY = y + floor * rowH;
+                float rowWidth = nodes.Count * cellW;
+                float rowX = x + (cw - rowWidth) / 2f;
+
+                for (int i = 0; i < nodes.Count; i++)
+                {
+                    var node = nodes[i];
+                    var rect = new Rect(rowX + i * cellW + 4f, rowY, cellW - 8f, rowH - 10f);
+                    bool isCurrent = _run.CurrentNodeId == node.Id;
+                    bool isAvailable = available.Contains(node.Id);
+                    bool isVisited = _run.VisitedNodeIds.Contains(node.Id);
+
+                    var oldColor = GUI.backgroundColor;
+                    GUI.backgroundColor = isCurrent ? new Color(1f, 0.85f, 0.3f)
+                        : isAvailable ? new Color(0.4f, 0.8f, 0.5f)
+                        : isVisited ? new Color(0.5f, 0.5f, 0.55f)
+                        : new Color(0.25f, 0.25f, 0.3f);
+
+                    string label = NodeLabel(node.Type) + (isCurrent ? "\n(here)" : "");
+
+                    if (isAvailable)
+                    {
+                        if (GUI.Button(rect, label, _nodeBtn))
+                        {
+                            GUI.backgroundColor = oldColor;
+                            OnNodeChosen?.Invoke(node);
+                            return; // the scene is being rebuilt under us -- stop drawing this frame
+                        }
+                    }
+                    else
+                    {
+                        GUI.enabled = false;
+                        GUI.Button(rect, label, _nodeBtn); // disabled -- reuses button chrome for visual consistency
+                        GUI.enabled = true;
+                    }
+
+                    GUI.backgroundColor = oldColor;
+                }
+            }
+
+            if (GUI.Button(new Rect(panel.x + panel.width - 110f, panel.y + panel.height - 38f, 94f, 28f), "Back", _btn))
+                _showMap = false;
+        }
+
+        static string NodeLabel(RunNodeType type) => type switch
+        {
+            RunNodeType.Enemy => "Enemy",
+            RunNodeType.Elite => "ELITE",
+            RunNodeType.Merchant => "Shop",
+            RunNodeType.Treasure => "Chest",
+            RunNodeType.Rest => "Rest",
+            RunNodeType.Unknown => "?",
+            _ => type.ToString(),
+        };
 
         /// <summary>Whether the Rest panel is even worth opening -- someone has to be
         /// hurt, and there has to be at least one material banked to spend on them.

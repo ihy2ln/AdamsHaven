@@ -137,6 +137,22 @@ its entry HP/MP/status -- for a cleaner run at the same encounter rather than on
 pressing on). All three keep the win's own rewards; only Retry also resets the party.
 See item 21 below.
 
+M24 (this session) replaces the linear 2-map sequence with a **branching dungeon path**,
+Slay the Spire style, per the project owner's own reference image -- "for now just work
+on the structure, we will be replacing the map look and icons." A new pure-C# `RunMap`/
+`RunMapGenerator` builds a floor-by-floor node graph (Unknown/Merchant/Treasure/Rest/
+Enemy/Elite, matching the reference image's legend exactly) with guaranteed connectivity
+-- no orphan nodes, no dead ends, every start reaches the final convergence node -- and
+`DungeonRun` tracks the party's position through it. Camp's "Next battle" line is now a
+**Dungeon Map** panel showing the whole graph with the current choices highlighted;
+picking a node is the only way forward. Only Enemy/Elite have real content behind them
+(reused from the two existing maps); the other four types are structurally real but
+inert until their own systems exist. See item 22 below -- and its "Verification" note:
+a same-session, in-progress Farm refactor briefly left the whole project unable to
+compile (unrelated to this work, not touched by it, resolved before this session ended)
+-- the full 132-test EditMode suite passes clean now, including this milestone's own
+126, but none of it has been played yet.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -895,6 +911,77 @@ See item 21 below.
       (same reasoning M14's `OffensiveSkillMoveChance` used). The one piece of logic it
       leans on, `BattleWorld.RestoreEntryState()`, is already covered by
       `BattleWorldTests`.
+22. **A branching dungeon path, Slay the Spire style -- M24.** The project owner's own
+    reference image, with an explicit scope: "for now just work on the structure, we
+    will be replacing the map look and icons." Replaces the linear "map 1 then map 2"
+    sequence with a graph the player picks their route through, one node at a time.
+    - **`RunMap.cs`** (new, pure C#): `RunNodeType` matches the reference image's legend
+      exactly -- Unknown, Merchant, Treasure, Rest, Enemy, Elite. `RunMapNode` carries a
+      floor/column (layout only) and a list of forward edges. `RunMap` indexes nodes by
+      floor. `RunMapGenerator.Generate(seed, ...)` builds one: `PathCount` random walks
+      from floor 0 to a single final-floor convergence node (the one Slay the Spire
+      structural trait borrowed deliberately -- every path funnels into a
+      "boss-like" encounter), each walk nudging its column by -1/0/+1 per floor, then a
+      **repair pass** that guarantees the whole graph is sound regardless of how the
+      walks landed: every node above floor 0 gets an incoming edge if it has none, every
+      node before the final floor gets an outgoing edge if it has none. Together these
+      mean no orphan nodes, no dead ends, and every floor-0 start can reach the final
+      node -- the property that makes "pick a path" a real choice instead of a maze with
+      traps. Seeded via `System.Random`, same convention as `CharacterFactory.Create`.
+    - **`DungeonRun.cs`** (new, pure C#): tracks where the party stands on a generated
+      `RunMap` -- `CurrentNodeId`, `VisitedNodeIds`, `AvailableNextNodes()` (the current
+      node's own edges, or floor 0 if nothing's been entered yet), `MoveTo(id)` (fails
+      safely for anything not actually reachable), `IsComplete` once the final node is
+      entered.
+    - **Only Enemy and Elite have real content.** `BattleBootstrap.MapIndexForNode` maps
+      Enemy -> map 1's roster (Husk/Warden/Stinger), Elite -> map 2's (Rotfang/Deadeye/
+      Hexweaver, the tougher one) -- the single biggest placeholder in this feature:
+      every Enemy node in the whole graph reuses the exact same fight, and likewise for
+      Elite, since there's no per-node content yet. Flagged loudly in code, matching the
+      project's convention for this kind of stand-in (see M20's material-kind
+      placeholder). The other four node types are structurally real -- they exist on the
+      graph, they're navigable, `DungeonRun` treats them identically to Enemy/Elite --
+      but functionally inert: entering one just returns to camp with a "nothing here
+      yet" notice and the node marked visited. That's what "just the structure" means in
+      practice: the whole graph is real and traversable today; only two of its six node
+      types do anything yet.
+    - **Camp's "Next battle" line is now a Dungeon Map panel.** `CampScreen.Init` takes
+      a `DungeonRun` instead of a flat map index; a new "Dungeon Map" button opens a
+      panel rendering every floor as a row and every node as a button -- green for
+      choosable, gold for "you are here," grey for behind you, dark for not yet
+      reachable. Explicitly placeholder presentation (plain coloured `GUI.Button`s, no
+      dotted-path artwork) per the project owner's own scoping -- the graph underneath
+      is the real deliverable this session, not the picture of it.
+    - **The victory banner's "Next Battle" button is retired.** It assumed a single
+      deterministic next map; branching means there's no such thing once a path forks,
+      which is most of the time by design. A win now offers **Camp** (where the map
+      lives) and **Retry Battle** only -- Camp isn't a step backward, since a win still
+      carries its wounds and rewards forward into whatever node gets chosen next.
+    - **A fresh run auto-enters an Enemy node on floor 0**, preferring Enemy over
+      whatever else floor 0 rolled (it can roll Unknown too) so a first launch always
+      drops the player into an actual fight rather than sometimes landing on an inert
+      placeholder node with nothing to compare it against. The real branching choices
+      start showing at camp once that first battle ends -- building a whole camp screen
+      just to offer a single-node choice at the very start of a run wasn't judged worth
+      it yet.
+    - **M18's `N` skip stays deliberately decoupled from the dungeon run.** It's a dev
+      testing shortcut for jumping directly between the two built `MapDefinition`s, not
+      a move in the game, and was never meant to understand branching -- using it leaves
+      `DungeonRun`'s position stale relative to whatever content actually loaded. Flagged
+      in code as an accepted, documented gap in a dev-only tool, not a bug.
+    - New tests: `RunMapTests.cs` (new file, 12 tests) -- floor counts, the single-node
+      final-floor invariant, no orphans, no dead ends, no edge skips a floor, every start
+      node can reach the final node (breadth-first, across 6 seeds each), same-seed
+      determinism, no Elite on floor 0, plus 4 `DungeonRun` tests covering
+      `AvailableNextNodes`/`MoveTo`/`IsComplete`. **126/126 green**, and the full project
+      suite (132, once an unrelated in-progress Farm refactor stopped blocking the whole
+      build -- see "Known gaps") passes clean too, so the `BattleBootstrap`/
+      `CampScreen` wiring is now verified by a real `-batchmode -runTests` pass, not just
+      `Tools/typecheck.sh`.
+    - **Still not played.** A real compile+test pass proves the wiring is sound; it
+      doesn't prove the Dungeon Map panel is legible, that node buttons land where they
+      should, or that the whole escape/camp/rest/dungeon-map loop feels right end to
+      end. That needs an actual play session, same as M19-M23 before it.
 
 ## Roster
 
@@ -971,6 +1058,7 @@ costs the turn.
 | M21 | Action-row declutter -- Flee under Pause (+`F` key), Quit into the pause menu and now immediate | *(not yet tagged)* |
 | M22 | Per-unit Rest (1 material/member, choose who) replacing M20's flat whole-party cost | *(not yet tagged)* |
 | M23 | Victory banner gains Camp and Retry Battle alongside Next Battle | *(not yet tagged)* |
+| M24 | Branching dungeon path (RunMap/DungeonRun), Slay-the-Spire style, replacing the linear 2-map sequence | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -987,9 +1075,11 @@ this battle and move to the next stage (M18 -- also in the pause menu; unavailab
 the last map or after a wipe) · `F` flee, keeping the haul (M19/M21 -- button under
 Pause, shows live odds, costs the turn either way) · `?` keybind legend. **Quit Battle**
 (instant, forfeits the haul) lives in the pause menu. On a win, the outcome banner
-offers **Next Battle**, **Camp**, and **Retry Battle** (M23) -- Retry re-fights the same
-map with the party reset to its entry HP/MP/status; the other two carry the win's wounds
-forward.
+offers **Camp** and **Retry Battle** (M23; "Next Battle" retired in M24 -- see below) --
+Retry re-fights the same map with the party reset to its entry HP/MP/status; Camp carries
+the win's wounds forward and is where progress actually happens now: a branching
+**Dungeon Map** (M24) replaced the old flat "next battle" line, so picking a node is the
+only way to move forward once there's more than one path to choose from.
 
 Manual mode: a player unit's turn opens a 6-icon menu under their feet, all tapped --
 **BA** (free basic attack), **SM** (opens the mana-cost Skill Move list; tap again to
@@ -1032,6 +1122,21 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 
 ## Known gaps
 
+- **Resolved mid-session: an in-progress Farm refactor briefly broke the whole
+  project's compile.** For a stretch of this session, `Assets/Scripts/Farm
+  /FarmBootstrap.cs` referenced `FarmController`/`FarmHud`, deleted (uncommitted) as
+  part of someone else's parallel restructure of the Farm system (a new
+  `Game.Farm.asmdef`, new `Integration`/`Simulation` folders). Not this session's Battle
+  work, not touched by it -- flagged rather than fixed, since reverting someone else's
+  in-progress work without knowing its intended shape would have been presumptuous.
+  Worth recording because its effect was broader than Farm alone: while it was broken,
+  Play mode and `-batchmode -runTests` didn't work *at all*, for any system. Resolved by
+  the time this session ended (`FarmController.cs`/`FarmHud.cs` are back, modified
+  rather than missing) -- the full 132-test EditMode suite now passes clean, `Tools
+  /typecheck.sh` covers `Game.Farm` too since whoever was doing that work extended it
+  themselves mid-session. No action needed; kept here as a record of what happened and
+  how fast a whole-project compile break can appear from a completely unrelated
+  subsystem.
 - **`ProjectSettings.asset` still shows the pre-rename "AI.Game Farm"/`com.aigame.farm`
   values.** The fix (all three of `FarmAutoSetup.cs`/`FarmBatchSetup.cs`/
   `BuildAndroid.cs` now agree on "Adams Haven"/`com.adamshaven.game`) is committed, but
@@ -1251,14 +1356,16 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play the escape/quit/camp/rest loop end to end (M19-M22).** This is the newest,
-   least-played stretch of the project -- test-verified as of this session (114/114
-   headless), but never exercised by an actual person. Fight, flee or quit partway
-   through, land in camp, spend materials on Rest (now per-unit -- pick who), take on
-   the same battle again. Two things flagged as guesses worth a second look once played:
-   whether the flee odds feel right against a real fight (the constants are one block at
-   the top of `EscapeCalculator.cs`), and whether the per-unit Rest checklist reads
-   clearly in practice.
+2. **Play the whole loop end to end (M19-M24): fight, leave, camp, choose a node,
+   repeat.** This is the newest, least-played stretch of the project -- test-verified as
+   of this session (132/132 headless), but never exercised by an actual person. Fight,
+   flee/quit/win, land in camp, spend materials on Rest (per-unit -- pick who), open the
+   Dungeon Map and pick the next node. Specific things worth a second look once played:
+   whether the flee odds feel right against a real fight (`EscapeCalculator.cs`'s
+   constants are one block at the top), whether the per-unit Rest checklist reads
+   clearly, and whether the placeholder Dungeon Map panel (plain coloured buttons, no
+   art yet) is even usable enough to navigate by, or whether it needs a pass before
+   anything else lands on top of it.
 3. **Play map 2.** M17's content is built (v9) and committed, so Rotfang/Deadeye/
    Hexweaver have their elements and ultimates live. **M18's `N` skip** (or the escape/
    camp loop above) gets you there without fighting map 1 first. Confirm the whole stack
