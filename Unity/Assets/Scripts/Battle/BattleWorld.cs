@@ -56,7 +56,23 @@ namespace Game.Battle
 
         public bool LoadedOk { get; }
 
+        /// <summary>Whether this battle is the dungeon run's boss encounter (M26).
+        /// Read back by BattleBootstrap's Retry Battle wiring, so retrying a boss fight
+        /// stays a boss fight rather than quietly retrying at normal strength.</summary>
+        public bool IsBoss { get; }
+
         public const int BenchColumn = -1;
+
+        /// <summary>Flat multiplier on every enemy's rolled stats when `isBoss` is true
+        /// (M26) -- hp/attack/defense/magic/resistance/speed scale up; crit/accuracy/
+        /// evasion don't, same fields StatBlock's own `*` operator already leaves alone
+        /// for Tier scaling. Reuses whichever map/roster the encounter would otherwise
+        /// use (BattleBootstrap.MapIndexForNode) rather than authoring new content --
+        /// "same assets, just stronger," per the project owner's own scope for boss
+        /// content: no phase/pattern-trigger system, just a tougher stat block on an
+        /// existing roster. Arbitrary in this project's usual sense: coherent, not
+        /// tuned by play.</summary>
+        public const float BossStatMultiplier = 1.6f;
 
         // Mirrors the enemy formation built by BattleAssetBuilder: front-line melee
         // adjacent to the enemy's front line (column 2 vs 3), support/ranged behind.
@@ -79,10 +95,14 @@ namespace Game.Battle
         /// placeholder starting stock (see SeedPlaceholderInventory).</param>
         /// <param name="carryOverRewards">Same, for the run's banked EXP/materials (M20).
         /// Null starts a fresh run with an empty ledger.</param>
+        /// <param name="isBoss">M26 -- scales every enemy's rolled stats by
+        /// BossStatMultiplier when true. Read back afterward via IsBoss so a Retry
+        /// Battle on this world stays a boss fight.</param>
         public BattleWorld(int mapIndex = 0, IReadOnlyList<BattleUnit> carryOverPlayer = null,
             IReadOnlyList<BattleUnit> carryOverBench = null, BattleInventory carryOverInventory = null,
-            BattleRewards carryOverRewards = null)
+            BattleRewards carryOverRewards = null, bool isBoss = false)
         {
+            IsBoss = isBoss;
             MapIndex = Mathf.Clamp(mapIndex, 0, MapCount - 1);
             Map = Resources.Load<MapDefinition>($"Battle/Maps/Map_BattleSlice{MapIndex + 1}");
             var tier = Resources.Load<TierDefinition>("Battle/Tiers/Tier_Standard");
@@ -150,6 +170,7 @@ namespace Game.Battle
                 if (placement.character == null) continue;
                 var placementTier = placement.tier != null ? placement.tier : tier;
                 var instance = CharacterFactory.Create(placement.character, placementTier, noRollPool, seed++);
+                if (isBoss) instance.rolledStats *= BossStatMultiplier;
                 AllUnits.Add(new BattleUnit(placement.character, instance, Faction.Enemy, placement.position.y, facingRight: false));
             }
 

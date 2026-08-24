@@ -227,7 +227,8 @@ namespace Game.Battle
                         : isVisited ? new Color(0.5f, 0.5f, 0.55f)
                         : new Color(0.25f, 0.25f, 0.3f);
 
-                    string label = NodeLabel(node.Type) + (isCurrent ? "\n(here)" : "");
+                    bool isFinalFloor = floor == _run.Map.FloorCount - 1;
+                    string label = NodeLabel(node.Type, isFinalFloor) + (isCurrent ? "\n(here)" : "");
 
                     if (isAvailable)
                     {
@@ -253,16 +254,24 @@ namespace Game.Battle
                 _showMap = false;
         }
 
-        static string NodeLabel(RunNodeType type) => type switch
+        /// <summary>`isFinalFloor` (M26) relabels an Enemy/Elite node "BOSS" -- the
+        /// run's single convergence node is the one place `BattleWorld.BossStatMultiplier`
+        /// actually applies (see BattleBootstrap.EnterNode), so it deserves a label that
+        /// says so rather than reading like just another fight.</summary>
+        static string NodeLabel(RunNodeType type, bool isFinalFloor = false)
         {
-            RunNodeType.Enemy => "Enemy",
-            RunNodeType.Elite => "ELITE",
-            RunNodeType.Merchant => "Shop",
-            RunNodeType.Treasure => "Chest",
-            RunNodeType.Rest => "Rest",
-            RunNodeType.Unknown => "?",
-            _ => type.ToString(),
-        };
+            if (isFinalFloor && (type == RunNodeType.Enemy || type == RunNodeType.Elite)) return "BOSS";
+            return type switch
+            {
+                RunNodeType.Enemy => "Enemy",
+                RunNodeType.Elite => "ELITE",
+                RunNodeType.Merchant => "Shop",
+                RunNodeType.Treasure => "Chest",
+                RunNodeType.Rest => "Rest",
+                RunNodeType.Unknown => "?",
+                _ => type.ToString(),
+            };
+        }
 
         /// <summary>Whether the Rest panel is even worth opening -- someone has to be
         /// hurt, and there has to be at least one material banked to spend on them.

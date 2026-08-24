@@ -118,7 +118,11 @@ namespace Game.Battle
             EnsureStyles();
             int w = Screen.width, h = Screen.height;
 
-            GUI.Label(new Rect(0, 12, w, 30), $"AI.Game -- Battle ({(_ctrl.ManualMode ? "manual" : "auto")})", _title);
+            // M26: flags a boss encounter right in the title, since it's otherwise
+            // invisible in the field -- the roster is the same characters at the same
+            // sprites, just BattleWorld.BossStatMultiplier stronger.
+            string bossTag = _ctrl.World.IsBoss ? " -- BOSS" : "";
+            GUI.Label(new Rect(0, 12, w, 30), $"AI.Game -- Battle ({(_ctrl.ManualMode ? "manual" : "auto")}){bossTag}", _title);
             DrawTurnOrderStrip(w);
             DrawModeToggle(w);
             DrawUndoRedoButtons(w);

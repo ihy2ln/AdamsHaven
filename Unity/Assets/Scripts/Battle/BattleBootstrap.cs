@@ -48,8 +48,13 @@ namespace Game.Battle
             EnterNode(first, null, null, null, null);
         }
 
+        /// <param name="isBoss">M26 -- scales the enemy roster's stats up
+        /// (BattleWorld.BossStatMultiplier) rather than authoring new content. Only the
+        /// dungeon run's final node sets this true (see EnterNode); every other caller
+        /// (restart, M18's skip, Retry Battle re-reading `world.IsBoss`) passes its own
+        /// explicit value or the default.</param>
         public void BootMap(int mapIndex, IReadOnlyList<BattleUnit> carryOverPlayer, IReadOnlyList<BattleUnit> carryOverBench,
-            BattleInventory carryOverInventory, BattleRewards carryOverRewards = null)
+            BattleInventory carryOverInventory, BattleRewards carryOverRewards = null, bool isBoss = false)
         {
             ClearChildren();
 
@@ -70,7 +75,7 @@ namespace Game.Battle
             var settings = BattleSettings.Load();
             AudioListener.volume = settings.MasterVolume;
 
-            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench, carryOverInventory, carryOverRewards);
+            var world = new BattleWorld(mapIndex, carryOverPlayer, carryOverBench, carryOverInventory, carryOverRewards, isBoss);
 
             var visualsGo = new GameObject("BattleVisuals");
             visualsGo.transform.SetParent(transform, false);
@@ -96,9 +101,12 @@ namespace Game.Battle
             // Retry Battle (M23) re-boots this same mapIndex/content -- not a node move,
             // just a fresh attempt at what's already loaded, so DungeonRun's position is
             // untouched. The party was already reset to entry state by
-            // BattleController.RetryBattle() before this fires.
+            // BattleController.RetryBattle() before this fires. Reads world.IsBoss back
+            // (M26) rather than closing over the isBoss parameter directly -- retrying a
+            // boss fight must stay a boss fight, and reading the world's own answer is
+            // what keeps that true no matter how this particular world got built.
             ctrl.OnRetryRequested += () => BootMap(mapIndex, world.PlayerUnits.ToList(), world.Bench.ToList(),
-                world.Inventory, world.Banked);
+                world.Inventory, world.Banked, world.IsBoss);
             ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
@@ -106,7 +114,7 @@ namespace Game.Battle
             hudGo.AddComponent<BattleHud>().Init(ctrl, cam, visuals, settings.LogOpenByDefault);
 
             Debug.Log(world.LoadedOk
-                ? $"[AI.Game] Battle booted (map {mapIndex + 1}/{BattleWorld.MapCount})."
+                ? $"[AI.Game] Battle booted (map {mapIndex + 1}/{BattleWorld.MapCount}{(isBoss ? ", BOSS" : "")})."
                 : "[AI.Game] Battle boot failed to load data -- run AI.Game > Battle > Build Assets From Manifest.");
         }
 
@@ -123,7 +131,8 @@ namespace Game.Battle
         static int MapIndexForNode(RunMapNode node) => node.Type == RunNodeType.Elite ? 1 : 0;
 
         /// <summary>Commits to `node`: advances DungeonRun's position, then boots
-        /// whatever that node type implies. Enemy/Elite boot a real battle. Rest and
+        /// whatever that node type implies. Enemy/Elite boot a real battle, scaled up to
+        /// boss strength (M26) if this move landed on the run's final node. Rest and
         /// Treasure (M25) have real function too -- Rest opens camp's own per-unit Rest
         /// checklist directly, Treasure grants a potion. Unknown and Merchant still have
         /// nothing behind them (no event table, no shop) and just return to camp having
@@ -152,7 +161,11 @@ namespace Game.Battle
             {
                 case RunNodeType.Enemy:
                 case RunNodeType.Elite:
-                    BootMap(MapIndexForNode(node), party, bench, inventory, rewards);
+                    // _run.IsComplete is true the instant MoveTo (above) lands on the
+                    // map's single final-floor node -- exactly the "boss" moment (M26),
+                    // reusing DungeonRun's own tested convergence-node logic rather than
+                    // re-deriving "is this the last floor" here.
+                    BootMap(MapIndexForNode(node), party, bench, inventory, rewards, isBoss: _run.IsComplete);
                     break;
                 case RunNodeType.Rest:
                     ShowCamp(partyList, benchList, inventory, rewards,

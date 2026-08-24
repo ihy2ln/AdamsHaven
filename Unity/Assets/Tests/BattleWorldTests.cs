@@ -158,5 +158,70 @@ namespace Game.Tests
             Assert.IsFalse(new BattleWorld(mapIndex: BattleWorld.MapCount - 1).HasNextMap,
                 "the last map has nothing to advance to.");
         }
+
+        // -- M26: boss content (same assets, scaled stats) -----------------------------
+
+        [Test]
+        public void IsBoss_ReflectsWhateverWasPassedToTheConstructor()
+        {
+            Assert.IsFalse(new BattleWorld(mapIndex: 0).IsBoss, "IsBoss should default to false.");
+            Assert.IsTrue(new BattleWorld(mapIndex: 0, isBoss: true).IsBoss);
+        }
+
+        /// <summary>The whole point of M26: no new content, just the existing enemy
+        /// roster scaled up. Compares a boss world's enemies against a normal world's
+        /// enemies stat-for-stat (same mapIndex, so it's the exact same roster/tier/seed
+        /// sequence either way -- the only difference should be the multiplier).</summary>
+        [Test]
+        public void ABossWorld_ScalesEveryEnemysCombatStatsByBossStatMultiplier()
+        {
+            var normal = new BattleWorld(mapIndex: 0);
+            var boss = new BattleWorld(mapIndex: 0, isBoss: true);
+
+            var normalEnemies = normal.EnemyUnits.ToList();
+            var bossEnemies = boss.EnemyUnits.ToList();
+
+            Assert.AreEqual(normalEnemies.Count, bossEnemies.Count, "test setup: same map, same roster size.");
+            Assert.IsNotEmpty(normalEnemies, "test setup: map 1 should field enemies.");
+
+            for (int i = 0; i < normalEnemies.Count; i++)
+            {
+                var n = normalEnemies[i].Stats;
+                var b = bossEnemies[i].Stats;
+
+                Assert.AreEqual(Mathf.RoundToInt(n.hp * BattleWorld.BossStatMultiplier), b.hp,
+                    $"enemy {i}'s HP should scale by BossStatMultiplier.");
+                Assert.AreEqual(Mathf.RoundToInt(n.attack * BattleWorld.BossStatMultiplier), b.attack);
+                Assert.AreEqual(Mathf.RoundToInt(n.defense * BattleWorld.BossStatMultiplier), b.defense);
+                Assert.AreEqual(Mathf.RoundToInt(n.magic * BattleWorld.BossStatMultiplier), b.magic);
+                Assert.AreEqual(Mathf.RoundToInt(n.resistance * BattleWorld.BossStatMultiplier), b.resistance);
+                Assert.AreEqual(Mathf.RoundToInt(n.speed * BattleWorld.BossStatMultiplier), b.speed);
+
+                // Crit/accuracy/evasion deliberately do NOT scale -- same fields
+                // StatBlock's own `*` operator already leaves alone for Tier scaling.
+                Assert.AreEqual(n.critRate, b.critRate, $"enemy {i}'s critRate shouldn't be touched by the boss scale.");
+                Assert.AreEqual(n.critDamage, b.critDamage);
+                Assert.AreEqual(n.accuracy, b.accuracy);
+                Assert.AreEqual(n.evasion, b.evasion);
+            }
+        }
+
+        /// <summary>The player side is never part of the "same assets, just stronger"
+        /// deal -- a boss fight is harder because the enemy is tougher, not because the
+        /// party is quietly weakened.</summary>
+        [Test]
+        public void ABossWorld_NeverScalesThePlayersOwnStats()
+        {
+            var normal = new BattleWorld(mapIndex: 0);
+            var boss = new BattleWorld(mapIndex: 0, isBoss: true);
+
+            var normalPlayers = normal.PlayerUnits.ToList();
+            var bossPlayers = boss.PlayerUnits.ToList();
+
+            Assert.AreEqual(normalPlayers.Count, bossPlayers.Count);
+            for (int i = 0; i < normalPlayers.Count; i++)
+                Assert.AreEqual(normalPlayers[i].Stats.hp, bossPlayers[i].Stats.hp,
+                    $"player {i}'s HP should be identical regardless of IsBoss.");
+        }
     }
 }

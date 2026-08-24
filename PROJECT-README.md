@@ -160,6 +160,17 @@ at random among Hp/Mp/Multi) into the carried `BattleInventory`, via a new, test
 `BattleInventory.Grant` method. Only Unknown and Merchant are still inert. See item
 23 below.
 
+M26 (this session) adds **boss content**, scoped exactly as the project owner asked:
+"just use the same assets but just make the enemy stronger" -- no phase/pattern-trigger
+system. The dungeon run's single final-floor node (already the natural "boss-like"
+convergence point since M24) now boots its battle with every enemy's stats scaled by a
+new `BattleWorld.BossStatMultiplier` (1.6x hp/attack/defense/magic/resistance/speed;
+crit/accuracy/evasion untouched). Same roster, same map, no new `MapDefinition` or
+asset build required -- and therefore nothing that risks the documented headless
+ScriptableObject-corruption gotcha. The Dungeon Map panel labels that node "BOSS", and
+the in-battle title bar flags it too. Retrying a boss fight stays a boss fight (reads
+`BattleWorld.IsBoss` back rather than re-deciding). See item 24 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -1019,6 +1030,42 @@ at random among Hp/Mp/Multi) into the carried `BattleInventory`, via a new, test
       (not the same map repeated across every Enemy/Elite node), then rest, then a
       treasure chest, then a boss reusing existing character assets at boosted stats.
       That depends on boss content existing first, which is next.
+24. **Boss content -- M26.** The project owner scoped this deliberately small: "a boss
+    fight which can just use the same assets but just make the enemy stronger" -- not a
+    phase/pattern-trigger system. Landed exactly that, nothing more.
+    - **`BattleWorld.BossStatMultiplier = 1.6f`** (new), a flat multiplier applied to
+      every enemy's rolled stats when the world is constructed with `isBoss: true` --
+      hp/attack/defense/magic/resistance/speed scale up, crit/accuracy/evasion don't,
+      the same split `StatBlock`'s own `*` operator already uses for Tier scaling. The
+      player side is never touched -- a boss fight is harder because the enemy is
+      tougher, not because the party is quietly weakened.
+    - **No new content required.** The boss reuses whichever roster the run's final
+      node's own type already implies (`MapIndexForNode`: Enemy -> map 1, Elite -> map
+      2) -- same characters, same sprites, same skills, just stronger. Deliberately
+      avoids authoring a third `MapDefinition` or touching `BattleAssetBuilder`, which
+      would mean a headless asset rebuild and the documented ScriptableObject-corruption
+      risk that comes with one. This is why "same assets, stronger stats" was the right
+      scope, not just the simplest one.
+    - **The run's existing final-floor convergence node *is* the boss encounter** --
+      no new node type invented. `EnterNode` passes `isBoss: _run.IsComplete` when
+      booting an Enemy/Elite node, reusing `DungeonRun`'s own tested
+      "is this the final node" logic (`IsComplete` becomes true the instant `MoveTo`
+      lands there) rather than re-deriving it. The Dungeon Map panel relabels that one
+      node "BOSS" regardless of whether it rolled Enemy or Elite, and the in-battle
+      title bar appends "-- BOSS" too, since the enemy being stronger is otherwise
+      invisible in the field -- same sprites, same names.
+    - **Retrying a boss fight stays a boss fight.** `BattleWorld.IsBoss` records what
+      the world was actually built as; Retry Battle's boot call reads `world.IsBoss`
+      back rather than closing over the original `isBoss` value, so it can't drift.
+    - New tests: 4 in `BattleWorldTests.cs` -- `IsBoss` reflects the constructor
+      argument, a boss world's enemies scale by exactly `BossStatMultiplier` on every
+      combat stat while crit/accuracy/evasion stay untouched (checked stat-by-stat
+      against a same-seed non-boss world), and the player's own stats are never scaled.
+    - **Deliberately deferred, matching the project owner's own sequencing**: reshaping
+      the dungeon graph into the specific curated sequence from item 23 (two distinct
+      fights, then rest, then treasure, then this boss) instead of
+      `RunMapGenerator`'s randomized branching. Boss content existing was the
+      prerequisite; the reshape is next.
 
 ## Roster
 
@@ -1097,6 +1144,7 @@ costs the turn.
 | M23 | Victory banner gains Camp and Retry Battle alongside Next Battle | *(not yet tagged)* |
 | M24 | Branching dungeon path (RunMap/DungeonRun), Slay-the-Spire style, replacing the linear 2-map sequence | *(not yet tagged)* |
 | M25 | Rest and Treasure nodes get real function (per-unit Rest checklist, a granted potion) | *(not yet tagged)* |
+| M26 | Boss content -- the run's final node scales its existing roster's stats (`BossStatMultiplier`), no new content | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -1394,17 +1442,20 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play the whole loop end to end (M19-M25): fight, leave, camp, choose a node,
-   repeat.** This is the newest, least-played stretch of the project -- test-verified as
-   of this session, but never exercised by an actual person. Fight, flee/quit/win, land
-   in camp, walk a Rest node to open the per-unit checklist directly (pick who), walk a
-   Treasure node for a granted potion, open the Dungeon Map and pick the next node.
-   Specific things worth a second look once played: whether the flee odds feel right
-   against a real fight (`EscapeCalculator.cs`'s constants are one block at the top),
-   whether the per-unit Rest checklist reads clearly, whether the placeholder Dungeon
-   Map panel (plain coloured buttons, no art yet) is even usable enough to navigate by,
-   and whether a Rest/Treasure node dropping straight into its own screen (rather than
-   the main camp view first) reads as helpful or disorienting.
+2. **Play the whole loop end to end (M19-M26): fight, leave, camp, choose a node,
+   reach the boss, repeat.** This is the newest, least-played stretch of the project --
+   test-verified as of this session, but never exercised by an actual person. Fight,
+   flee/quit/win, land in camp, walk a Rest node to open the per-unit checklist directly
+   (pick who), walk a Treasure node for a granted potion, open the Dungeon Map and pick
+   the next node, eventually reach the run's final "BOSS"-labeled node and confirm the
+   enemy actually hits harder and tanks more (`BossStatMultiplier`, 1.6x). Specific
+   things worth a second look once played: whether the flee odds feel right against a
+   real fight (`EscapeCalculator.cs`'s constants are one block at the top), whether the
+   per-unit Rest checklist reads clearly, whether the placeholder Dungeon Map panel
+   (plain coloured buttons, no art yet) is even usable enough to navigate by, whether a
+   Rest/Treasure node dropping straight into its own screen reads as helpful or
+   disorienting, and whether 1.6x actually feels like a boss or is too mild/too brutal
+   against a party that just walked several floors of normal fights.
 3. **Play map 2.** M17's content is built (v9) and committed, so Rotfang/Deadeye/
    Hexweaver have their elements and ultimates live. **M18's `N` skip** (or the escape/
    camp loop above) gets you there without fighting map 1 first. Confirm the whole stack
@@ -1455,26 +1506,22 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
     a new enemy can't silently ship outside the combat systems the way these three
     originally did.
 12. **Bigger meta-systems from the project owner's own "modern AAA" list.** Escape/flee
-    (M19) and its economy (M20-M22) are done. **Equipment and save/persistence are both
-    explicitly deferred by the project owner until the farm/town scene exists** -- gear
-    is meant to come with crafting there, not before. That leaves **boss content** as the
-    one remaining item that lives entirely inside the battle scene, and the project
-    owner has already scoped it: not a phase/pattern-trigger system, just a distinct
-    encounter reusing existing character assets at boosted stats (a third `MapDefinition`
-    -- or an `EnemyPlacement` stat multiplier on an existing one -- rather than new
-    mechanics). `MapDefinition.forbidEscape` (M19) is already the hook a boss fight
-    wants.
-    - **Once boss content exists, the project owner's explicit next step is reshaping
-      the dungeon graph itself** into a short, deliberate sequence rather than
-      `RunMapGenerator`'s randomized branching: two distinct normal fights (map 1's
-      roster, then map 2's -- currently every Enemy node reuses map 1 and every Elite
-      node reuses map 2 uniformly across the whole graph, which is exactly what "test
-      separate them" in the project owner's own words is asking to fix), a Rest node, a
-      Treasure node (already real as of M25 -- see item 23), then the new boss. Smaller
-      and more curated than the current 6-floor random graph; likely means either a
-      fixed `RunMapGenerator.Generate` variant or hand-authoring a `RunMap` outright
-      rather than reusing the branching generator for this specific test sequence.
-13. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+    (M19) and its economy (M20-M22) are done. Boss content (M26) is done, scoped exactly
+    as asked -- the run's final node, same assets, `BossStatMultiplier`-scaled. **Equipment
+    and save/persistence remain explicitly deferred by the project owner until the
+    farm/town scene exists** -- gear is meant to come with crafting there, not before.
+    That leaves nothing else on this list that lives entirely inside the battle scene;
+    the concrete next step is item 13 below, not a new system.
+13. **Reshape the dungeon graph into the project owner's curated test sequence** (their
+    explicit next step, named alongside boss content): two distinct normal fights (map
+    1's roster, then map 2's -- currently every Enemy node reuses map 1 and every Elite
+    node reuses map 2 uniformly across the whole graph, which is exactly what "test
+    separate them" in the project owner's own words is asking to fix), a Rest node, a
+    Treasure node (already real as of M25), then the boss (M26). Smaller and more
+    curated than the current 6-floor random graph; likely means either a fixed
+    `RunMapGenerator.Generate` variant or hand-authoring a `RunMap` outright rather than
+    reusing the branching generator for this specific test sequence.
+14. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
     reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
     are designed but not connected to this battle system yet — that's the actual "rest
     of the game," this slice only proves the battle screen works.
