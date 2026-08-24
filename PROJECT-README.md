@@ -1205,6 +1205,22 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       Farm, or whether arriving at Farm with a completely fresh `FarmWorld` every time is
       the intended behavior for this first cut -- reads as intentional for "for now," but
       worth confirming.
+    - **The return leg (Farm -> Battle) also landed this session**, per explicit
+      follow-up direction: "camp, home, town interchangeable... no work done for the
+      town or home so just placeholders for now." `FarmController.ReturnToDungeon()`
+      (`SceneManager.LoadScene("Battle")`, symmetric with the Camp-side trip -- Battle's
+      own `Start()`/`Boot()` already does the right generic "fresh dungeon run" thing, so
+      no special-casing needed) wired to a new "RETURN TO CAMP" button in `FarmHud`.
+      **Written but deliberately left uncommitted**, unlike everything else this
+      session: both files it touches (`FarmController.cs`, `FarmHud.cs`) are already
+      deep in ChatGPT's own uncommitted, in-progress Farm refactor (274 and 76 changed
+      lines respectively as of this write-up), and the new lines landed inside the same
+      diff hunks as their changes -- there's no way to `git add` just this addition
+      without also sweeping their unfinished work into the commit, which is exactly the
+      shared-tree mistake this project's own conventions exist to prevent. Compiles
+      clean (`Tools/unity.sh typecheck`, which covers `Game.Farm` too). **Whoever commits
+      the rest of the Farm refactor should carry this along with it** -- it's sitting
+      right there in the working tree, just not yet in git history.
 
 ## Roster
 
@@ -1286,7 +1302,7 @@ costs the turn.
 | M26 | Boss content -- the run's final node scales its existing roster's stats (`BossStatMultiplier`), no new content | *(not yet tagged)* |
 | M27 | Curated 5-node test dungeon (`GenerateCuratedTestRun`) replaces the randomized graph in `Boot()`: map1 fight, map2 fight, rest, treasure, boss | *(not yet tagged)* |
 | M28 | MCP server (`com.coplaydev.unity-mcp`) + `Tools/unity.sh` CLI -- project-wide tooling, not a battle-scene feature | *(not yet tagged)* |
-| M29 | First cut of the battle-to-farm transition: Camp's "Leave dungeon" loads Farm.unity, both scenes in Build Settings, one-directional for now | *(not yet tagged)* |
+| M29 | Battle<->farm transition, both directions: Camp's "Leave dungeon" loads Farm.unity (committed); Farm's "Return to Camp" loads Battle.unity (written, uncommitted -- see "Known gaps") | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
