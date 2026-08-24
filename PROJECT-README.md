@@ -998,16 +998,24 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
   the "interactive rebuilds are safe, headless ones aren't" hypothesis, and a fairly
   strong one -- this pass created new ScriptableObjects after a script change, the exact
   shape that corrupted everything in M9.
-- **M18 is verified live; M19 and M20 compile but have never been run.** M18's skip was
-  picked up by the project owner's own Editor session (no compile errors, and the log
-  shows map 1 booting then map 2 booting seconds later with no exceptions -- the skip
-  working). M19 and M20 landed while that Editor was open, so `-batchmode -runTests`
-  could not run at all (shared lockfile) and the queued attempt timed out after 45
-  minutes. They are **type-checked clean** via `Tools/typecheck.sh` (item 18 above) --
-  which is genuinely new coverage, not a fudge: it catches every compile error across
-  Game.Data/Game.Battle/Game.Tests. But **type-checking is not testing.** ~113 tests
-  including 11 new ones have never executed, and nothing in M19 or M20 has been played.
-  One `-runTests` pass once Unity is closed is the outstanding gate.
+- **Resolved same session: all 114 EditMode tests pass headlessly, covering
+  M17-M22 in one run.** The project owner closed their Editor mid-session, which let
+  `-batchmode -runTests` finally run for the first time since M17 landed --
+  `Tools/typecheck.sh` (item 18) had been carrying compile-error coverage in the
+  meantime, but had never been a substitute for actually executing the suite. First
+  pass came back 113/114; the one failure was test infrastructure, not game logic --
+  `BattleWorldTests.CarryingOverSurvivors_KeepsTheirWoundsAndCompactsColumns` builds its
+  party from `BattleTestHelpers.MakeUnit` (a bare `CharacterDefinition` with no
+  `skillMoves`), and it's the one test in the suite that constructs a real `BattleWorld`
+  around dummy units -- `BattleWorld.WarnOnStaleContent` logs an `Error` the instant it
+  sees that (the same M10-regression check that fires in real play), and Unity's test
+  runner fails a test on any unhandled log regardless of what the assertions say. Fixed
+  with a `LogAssert.Expect` immediately before constructing the world in that one test.
+  **114/114 green.** M18 was also separately confirmed live this session (the project
+  owner's Editor booted map 1 then map 2 with no exceptions -- the skip working in
+  practice, not just in tests). M19-M22 are now test-verified but **still not
+  played** -- the escape/quit/camp/rest loop as a whole has never been exercised by a
+  person, only by assertions.
 - **M20/M22's materials are a parallel model to the one the project already has,
   and by the project owner's own direction none of these numbers are meant to be final
   yet** (EXP has nowhere to spend it until farm/town/class progression exists; rest cost,
@@ -1191,59 +1199,72 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play map 2.** The blocker on this is gone -- M17's content is built (v9) and
-   committed, so Rotfang/Deadeye/Hexweaver now have their elements and ultimates live.
-   **M18's `N` skip exists precisely to make this fast**: start a battle, press `N`, and
-   you're on map 2 with a full-HP party without fighting map 1 first. Then confirm the
-   whole stack against a second roster at once -- Poison/Attack Down/Defense Down/Stun
-   visibly doing something, auto mode reaching for offensive Skill Moves, Break/crit
-   landing, and M17's own additions: Sable hitting Rotfang for 1.5x, Deadeye's Storm
-   Volley hitting all three party members at three different multipliers, and Hexweaver's
-   Blood Chorus healing its own side. Auto mode alone shows all of this --
-   `ChooseAutoSkill` fires an ultimate the instant a gauge fills, on either faction -- so
-   this needs a play-through, not manual input.
-3. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
+2. **Play the escape/quit/camp/rest loop end to end (M19-M22).** This is the newest,
+   least-played stretch of the project -- test-verified as of this session (114/114
+   headless), but never exercised by an actual person. Fight, flee or quit partway
+   through, land in camp, spend materials on Rest (now per-unit -- pick who), take on
+   the same battle again. Two things flagged as guesses worth a second look once played:
+   whether the flee odds feel right against a real fight (the constants are one block at
+   the top of `EscapeCalculator.cs`), and whether the per-unit Rest checklist reads
+   clearly in practice.
+3. **Play map 2.** M17's content is built (v9) and committed, so Rotfang/Deadeye/
+   Hexweaver have their elements and ultimates live. **M18's `N` skip** (or the escape/
+   camp loop above) gets you there without fighting map 1 first. Confirm the whole stack
+   against a second roster at once -- Poison/Attack Down/Defense Down/Stun visibly doing
+   something, auto mode reaching for offensive Skill Moves, Break/crit landing, and
+   M17's own additions: Sable hitting Rotfang for 1.5x, Deadeye's Storm Volley hitting
+   all three party members at three different multipliers, and Hexweaver's Blood Chorus
+   healing its own side. Auto mode alone shows all of this -- `ChooseAutoSkill` fires an
+   ultimate the instant a gauge fills, on either faction -- so this needs a play-through,
+   not manual input.
+4. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
    specific things to watch (Blood Chorus sustain, Storm Volley burst on the healer).
    The profiles are all in one table (`CombatStats` in `Data/Core/StatBlock.cs`) and the
    ultimates are 3 adjacent lines in `BuildMap2EnemySkills`, so a retune is a one-file
-   edit plus a rebuild.
-4. **Screenshot the manual-mode-only HUD for the wiki.** `Combat-Systems.md` has real
+   edit plus a rebuild. Same caveat as item 2 above applies to M20-M22's numbers too --
+   by the project owner's own direction, none of them (EXP, material kinds, rest cost)
+   are meant to be final yet.
+5. **Screenshot the manual-mode-only HUD for the wiki.** `Combat-Systems.md` has real
    in-game screenshots for everything auto mode surfaces (roster bars, turn-order strip)
-   but nothing for the manual-only pieces -- the colour-coded BA/SM/U/R/S/I row and the
-   Unit Stats card -- because synthetic clicks can't reach the standalone build from this
-   environment. Two screenshots from a real play session would fill the last gap in that
-   page.
-5. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
+   but nothing for the manual-only pieces -- the colour-coded action row (now BA/SM/U/R/
+   S/I, with Flee and Quit relocated in M21) and the Unit Stats card -- because synthetic
+   clicks can't reach the standalone build from this environment. A couple of screenshots
+   from a real play session, plus one of camp/rest, would fill the gap.
+6. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
    the map's generic impact FX, since no skill-specific effect exists yet -- the hook
    (`SkillDefinition.effect`) is ready the moment art/effect sheets are available, no
    further code changes needed to attach one.
-6. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
+7. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
    the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
    battle) because no economy system exists yet to source real starting inventory from.
-7. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+   M20's materials are the same kind of placeholder for a different resource -- see
+   "Known gaps" on why both should eventually route through `MaterialDefinition`/
+   `DropTable` instead of their current stand-ins.
+8. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations) -- explicitly deferred by the project owner until the foundation above
    is laid out further. The components are ready (M12) whenever this comes back up.
-8. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
+9. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
    fix) -- currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold,
    not synced to the clip's actual hit frame.
-9. Consider extending the status-effect system if content wants to go beyond the 7
-   types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
-   core tick/apply/multiplier plumbing (M13) is general enough to add types to without
-   restructuring it. `Poison` itself is still unused outside of Rotfang.
-10. More enemy variety beyond map 2's 3, if the project owner wants it -- the
+10. Consider extending the status-effect system if content wants to go beyond the 7
+    types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
+    core tick/apply/multiplier plumbing (M13) is general enough to add types to without
+    restructuring it. `Poison` itself is still unused outside of Rotfang.
+11. More enemy variety beyond map 2's 3, if the project owner wants it -- the
     `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
     borrow art from an existing `CharacterDefinition` (no new art generation needed).
     Since M17 that path also takes an element and an ultimate as required parameters, so
     a new enemy can't silently ship outside the combat systems the way these three
     originally did.
-11. **Bigger meta-systems from the project owner's own "modern AAA" list, still
-    unstarted**: boss phase/pattern triggers, an equipment/loadout system (a stats
-    screen exists now via M16's Unit Stats panel, but nothing equips gear yet), and
-    save/persistence. Escape/flee came off this list in M19. Boss phases are the natural
-    next one -- `MapDefinition.forbidEscape` is already the first hook it needs, and it's
-    the only remaining item that lives entirely inside the battle scene; equipment and
-    persistence both want the farm/battle boundary settled first.
-12. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+12. **Bigger meta-systems from the project owner's own "modern AAA" list.** Escape/flee
+    (M19) and its economy (M20-M22) are done. **Equipment and save/persistence are both
+    explicitly deferred by the project owner until the farm/town scene exists** -- gear
+    is meant to come with crafting there, not before. That leaves **boss phase/pattern
+    triggers** as the one remaining item that lives entirely inside the battle scene --
+    `MapDefinition.forbidEscape` is already the first hook it needs (M19), and it's the
+    natural pick if more battle-scene work is wanted before the farm/town boundary gets
+    built.
+13. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
     reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
     are designed but not connected to this battle system yet — that's the actual "rest
     of the game," this slice only proves the battle screen works.
