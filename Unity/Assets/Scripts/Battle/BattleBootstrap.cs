@@ -55,9 +55,20 @@ namespace Game.Battle
             ctrl.OnAdvanceRequested += () => BootMap(mapIndex + 1, world.PlayerUnits.ToList(), world.Bench.ToList(),
                 world.Inventory, world.Banked);
             // Escaping or quitting (M20) goes to camp rather than to another battle. The
-            // map index is deliberately NOT advanced -- withdrawing from a fight doesn't
-            // clear it, so camp offers the same battle again.
-            ctrl.OnLeaveRequested += () => BootCamp(mapIndex, world, ctrl.Outcome);
+            // map index is deliberately NOT advanced then -- withdrawing from a fight
+            // doesn't clear it, so camp offers the same battle again. A win reaching camp
+            // (M23) is the opposite case: the party already cleared this map, so camp's
+            // own "what's next" should point at mapIndex + 1, exactly like "Next Battle"
+            // would -- CampScreen.NextBattleLine/OnContinueRequested don't know or care
+            // which button got them here, they just act on whatever index they're given.
+            ctrl.OnLeaveRequested += () => BootCamp(
+                ctrl.Outcome == BattleOutcome.PlayerVictory ? mapIndex + 1 : mapIndex, world, ctrl.Outcome);
+            // Retry Battle (M23) re-boots this same map -- mapIndex, not +1 -- with the
+            // party GoToCamp/RetryBattle already reset to entry state on the controller
+            // side (RestoreEntryState), and the win's own rewards already banked before
+            // this fires. A fresh attempt at the same fight, not a step forward.
+            ctrl.OnRetryRequested += () => BootMap(mapIndex, world.PlayerUnits.ToList(), world.Bench.ToList(),
+                world.Inventory, world.Banked);
             ctrl.Init(world, visuals, cam, settings);
 
             var hudGo = new GameObject("BattleHud");
@@ -84,9 +95,15 @@ namespace Game.Battle
             var party = world.PlayerUnits.ToList();
             var bench = world.Bench.ToList();
 
-            string arrival = outcome == BattleOutcome.Escaped
-                ? $"You broke off the fight and made it back to camp, carrying what you'd taken."
-                : "You walked away before it was worth anything. Nothing gained, nothing spent.";
+            // Three arrival lines, one per way of reaching camp (M20 escape/quit, M23
+            // victory) -- each reads honestly about what actually happened, since this is
+            // the player's first look at the outcome after the banner.
+            string arrival = outcome switch
+            {
+                BattleOutcome.Escaped => "You broke off the fight and made it back to camp, carrying what you'd taken.",
+                BattleOutcome.PlayerVictory => "Battle won. You made camp before pressing on.",
+                _ => "You walked away before it was worth anything. Nothing gained, nothing spent.",
+            };
 
             var campGo = new GameObject("CampScreen");
             campGo.transform.SetParent(transform, false);
@@ -103,7 +120,13 @@ namespace Game.Battle
                 BootMap(0, null, null, null);
             };
 
-            Debug.Log($"[AI.Game] Camp booted after {outcome} (next battle {mapIndex + 1}/{BattleWorld.MapCount}).");
+            // mapIndex can equal BattleWorld.MapCount here (a win on the last map, see
+            // this method's own OnLeaveRequested wiring above) -- CampScreen's own
+            // "next battle" line and Take-On button both already handle that case
+            // ("dungeon is behind you", button disabled), this log just mirrors it rather
+            // than printing a nonsensical "battle 3/2".
+            string nextDesc = mapIndex < BattleWorld.MapCount ? $"next battle {mapIndex + 1}/{BattleWorld.MapCount}" : "no battles left";
+            Debug.Log($"[AI.Game] Camp booted after {outcome} ({nextDesc}).");
         }
 
         void ClearChildren()

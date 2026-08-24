@@ -727,10 +727,32 @@ namespace Game.Battle
                 GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
                 if (GUI.Button(new Rect(w / 2f - 100, h / 2f + 36, 200, 44), "Back to Camp", _btn)) _ctrl.GoToCamp();
             }
-            else if (advancing)
+            else if (_ctrl.Outcome == BattleOutcome.PlayerVictory)
             {
-                GUI.Label(new Rect(0, h / 2f, w, 30), "The party presses onward, wounds and all", _sub);
-                if (GUI.Button(new Rect(w / 2f - 100, h / 2f + 36, 200, 44), "Next Battle", _btn)) _ctrl.AdvanceToNextMap();
+                // Three ways forward from a win (M23), not just "Next Battle": Camp is a
+                // detour to rest/check stats/see what's next before committing, and Retry
+                // re-fights this exact map with the party reset to how it stood walking
+                // in -- useful for a better run at the same fight rather than only ever
+                // pressing on. All three carry the win's own rewards forward; only Retry
+                // also resets HP/MP/status, since it's the one option asking for a fresh
+                // attempt rather than a step onward.
+                string sub = advancing ? "The party presses onward, wounds and all" : "The dungeon is clear!";
+                GUI.Label(new Rect(0, h / 2f, w, 30), sub, _sub);
+
+                const float bw = 160f, gap = 16f;
+                int count = advancing ? 3 : 2;
+                float totalW = count * bw + (count - 1) * gap;
+                float bx = w / 2f - totalW / 2f;
+                float by = h / 2f + 36;
+
+                if (advancing)
+                {
+                    if (GUI.Button(new Rect(bx, by, bw, 44), "Next Battle", _btn)) { _ctrl.AdvanceToNextMap(); return; }
+                    bx += bw + gap;
+                }
+                if (GUI.Button(new Rect(bx, by, bw, 44), "Camp", _btn)) { _ctrl.GoToCamp(); return; }
+                bx += bw + gap;
+                if (GUI.Button(new Rect(bx, by, bw, 44), "Retry Battle", _btn)) { _ctrl.RetryBattle(); return; }
             }
             else
             {

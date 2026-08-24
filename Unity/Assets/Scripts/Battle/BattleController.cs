@@ -75,8 +75,13 @@ namespace Game.Battle
         public BattleRewards PendingRewards => World.Pending;
 
         /// <summary>Raised when the party leaves a battle under its own power (M20) --
-        /// escaped or quit. BattleBootstrap listens and boots the camp screen.</summary>
+        /// escaped, quit, or (M23) heading to camp after a win. BattleBootstrap listens
+        /// and boots the camp screen.</summary>
         public event Action OnLeaveRequested;
+
+        /// <summary>Raised by "Retry Battle" on the victory banner (M23). BattleBootstrap
+        /// re-boots the same map the party just won.</summary>
+        public event Action OnRetryRequested;
 
         /// <summary>Failed escape attempts this battle (M19). Feeds EscapeCalculator's
         /// escalating bonus, and reset by Init -- deliberately *not* rolled back by
@@ -881,16 +886,38 @@ namespace Game.Battle
             World.Pending.Award(dead);
         }
 
-        /// <summary>Hand off to the camp screen after escaping or quitting (M20).
-        /// Driven by the outcome banner's button rather than fired automatically from
-        /// LeaveBattle, so the player gets a beat to read what they kept or lost before
-        /// the scene changes -- the same shape victory's "Next Battle" button already
-        /// had. Stops the turn coroutine for the same reason AdvanceToNextMap does.</summary>
+        /// <summary>Hand off to the camp screen -- after escaping or quitting (M20), or
+        /// (M23) after a win, as an alternative to "Next Battle". Driven by the outcome
+        /// banner's button rather than fired automatically, so the player gets a beat to
+        /// read what they kept or lost before the scene changes. Stops the turn
+        /// coroutine for the same reason AdvanceToNextMap does.
+        ///
+        /// A victory reaching camp carries the party forward exactly as "Next Battle"
+        /// would -- wounds and all, nothing restored -- since going to camp first is a
+        /// detour on the way to the next fight, not a withdrawal from this one.
+        /// BattleBootstrap.BootCamp is what actually advances the map index for the
+        /// victory case; this method only decides whether the trip is allowed.</summary>
         public void GoToCamp()
         {
-            if (!HasLeftBattle) return;
+            if (Outcome != BattleOutcome.PlayerVictory && !HasLeftBattle) return;
             if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
             OnLeaveRequested?.Invoke();
+        }
+
+        /// <summary>Re-fight the battle just won (M23), party reset to how it stood
+        /// entering the fight -- the same restore Escape/Quit give the party via
+        /// RestoreEntryState, reachable here from a win instead of a withdrawal.
+        ///
+        /// Deliberately keeps whatever this win already banked to World.Banked (see
+        /// RunBattle's victory branch) -- retrying isn't undoing the win, it's asking to
+        /// fight the same encounter again, so the rewards already earned stay earned.
+        /// Only the party's wounds and this fresh attempt's own pending haul reset.</summary>
+        public void RetryBattle()
+        {
+            if (Outcome != BattleOutcome.PlayerVictory) return;
+            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
+            World.RestoreEntryState();
+            OnRetryRequested?.Invoke();
         }
 
         public void Restart() => OnRestartRequested?.Invoke();

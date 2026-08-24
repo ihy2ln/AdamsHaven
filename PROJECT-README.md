@@ -129,6 +129,14 @@ it yet** (no farm/town/class progression exists) and the M20 numbers generally a
 final -- expect them to keep moving as the surrounding systems get built. See item 20
 below.
 
+M23 (this session) gives a win three ways forward instead of one: the victory banner now
+shows **Next Battle** (unchanged), a new **Camp** button (a detour to rest/check stats
+before committing to the next fight, carrying the win's wounds forward exactly like Next
+Battle would), and a new **Retry Battle** (re-fight the same map with the party reset to
+its entry HP/MP/status -- for a cleaner run at the same encounter rather than only ever
+pressing on). All three keep the win's own rewards; only Retry also resets the party.
+See item 21 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -847,6 +855,46 @@ below.
       owner: "equipment change is a future issue after we make sure that the battle
       scene is finished... during the farm/town scene" where crafting will live. Not
       started, not next -- named here so a future session doesn't reopen the question.
+21. **Three ways forward from a win -- M23.** Direct project-owner request: "after
+    winning have two options, one to continue to next battle, camp option, and retry
+    battle option" (three named, despite the "two"). The victory banner went from one
+    button to up to three.
+    - **Next Battle** is unchanged. **Camp** (new) is a detour -- go rest, check the
+      stat overview, see what's next -- before committing to the next map; it carries
+      the party forward exactly as Next Battle would, wounds and all, since visiting
+      camp first isn't a withdrawal from the fight you just won. **Retry Battle** (new)
+      re-fights the *same* map the party just cleared, with HP/MP/status reset to how
+      the party stood walking in -- for a cleaner attempt at the same encounter, e.g. to
+      farm it again or avoid the wounds this run picked up.
+    - **All three keep the win's own rewards.** `World.Banked.Absorb(World.Pending)`
+      already ran in `RunBattle`'s victory branch before any of these buttons exist to
+      press, so Retry isn't "undo the win" -- it's "fight it again," and what was earned
+      stays earned. Only Retry resets the party, via the same `BattleWorld
+      .RestoreEntryState()` Escape/Quit already use (M20); Camp and Next Battle both
+      leave HP/MP exactly where the win left them.
+    - **`GoToCamp()`'s guard widened** from "only after Escape/Quit" to "after Escape/
+      Quit, or after a win" -- still closed off during `InProgress` and `EnemyVictory`
+      (Camp isn't reachable from a fight still going or a loss; out of scope for this
+      request). **New `RetryBattle()`/`OnRetryRequested`**, guarded to `PlayerVictory`
+      only.
+    - **Camp reached from a win points at the *next* map, not the one just won.**
+      `BattleBootstrap`'s `OnLeaveRequested` handler now picks `mapIndex + 1` for
+      `PlayerVictory` and the unchanged `mapIndex` for Escape/Quit -- `CampScreen`
+      itself doesn't know or care which button got the player there, it just acts on
+      whatever index it's given, so this one branch is the entire change. A win on the
+      last map correctly lands camp on `MapCount` (past the end), which `CampScreen`
+      already renders as "the dungeon is behind you" with the continue button disabled
+      -- pre-existing handling from M20, untouched.
+    - **New arrival line for camp-after-a-win** ("Battle won. You made camp before
+      pressing on.") -- the old two-way switch defaulted every non-Escaped arrival to
+      the Quit line ("You walked away before it was worth anything"), which would have
+      been actively wrong read after a win.
+    - No new tests: everything this milestone changes is `BattleController`/
+      `BattleBootstrap` wiring -- a `MonoBehaviour` that needs a live scene, matching
+      this project's established "orchestration verified by interactive play" split
+      (same reasoning M14's `OffensiveSkillMoveChance` used). The one piece of logic it
+      leans on, `BattleWorld.RestoreEntryState()`, is already covered by
+      `BattleWorldTests`.
 
 ## Roster
 
@@ -922,6 +970,7 @@ costs the turn.
 | M20 | Escape/quit economy (EXP + materials, entry-stat restore), camp screen, `Tools/typecheck.sh` | *(not yet tagged)* |
 | M21 | Action-row declutter -- Flee under Pause (+`F` key), Quit into the pause menu and now immediate | *(not yet tagged)* |
 | M22 | Per-unit Rest (1 material/member, choose who) replacing M20's flat whole-party cost | *(not yet tagged)* |
+| M23 | Victory banner gains Camp and Retry Battle alongside Next Battle | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -937,7 +986,10 @@ precedent: commit + docs update, no snapshot/zip.
 this battle and move to the next stage (M18 -- also in the pause menu; unavailable on
 the last map or after a wipe) · `F` flee, keeping the haul (M19/M21 -- button under
 Pause, shows live odds, costs the turn either way) · `?` keybind legend. **Quit Battle**
-(instant, forfeits the haul) lives in the pause menu.
+(instant, forfeits the haul) lives in the pause menu. On a win, the outcome banner
+offers **Next Battle**, **Camp**, and **Retry Battle** (M23) -- Retry re-fights the same
+map with the party reset to its entry HP/MP/status; the other two carry the win's wounds
+forward.
 
 Manual mode: a player unit's turn opens a 6-icon menu under their feet, all tapped --
 **BA** (free basic attack), **SM** (opens the mana-cost Skill Move list; tap again to
