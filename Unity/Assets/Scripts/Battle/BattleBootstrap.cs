@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using Game.Data;
 
 namespace Game.Battle
 {
@@ -122,11 +123,12 @@ namespace Game.Battle
         static int MapIndexForNode(RunMapNode node) => node.Type == RunNodeType.Elite ? 1 : 0;
 
         /// <summary>Commits to `node`: advances DungeonRun's position, then boots
-        /// whatever that node type implies. Enemy/Elite boot a real battle; every other
-        /// type (Unknown/Merchant/Treasure/Rest) has no content behind it yet (M24 is
-        /// structure only) and just returns to camp having moved there, so the graph
-        /// traversal is fully exercised even though half its node types don't do
-        /// anything yet.
+        /// whatever that node type implies. Enemy/Elite boot a real battle. Rest and
+        /// Treasure (M25) have real function too -- Rest opens camp's own per-unit Rest
+        /// checklist directly, Treasure grants a potion. Unknown and Merchant still have
+        /// nothing behind them (no event table, no shop) and just return to camp having
+        /// moved there, so the graph traversal is fully exercised even for the two node
+        /// types that don't do anything yet.
         ///
         /// `node` must be one of `_run.AvailableNextNodes()` -- both the initial
         /// Boot() call and CampScreen's picker only ever offer nodes from that list, so
@@ -143,19 +145,49 @@ namespace Game.Battle
                 return;
             }
 
+            var partyList = party?.ToList() ?? new List<BattleUnit>();
+            var benchList = bench?.ToList() ?? new List<BattleUnit>();
+
             switch (node.Type)
             {
                 case RunNodeType.Enemy:
                 case RunNodeType.Elite:
                     BootMap(MapIndexForNode(node), party, bench, inventory, rewards);
                     break;
-                default:
-                    ShowCamp(party?.ToList() ?? new List<BattleUnit>(), bench?.ToList() ?? new List<BattleUnit>(),
-                        inventory, rewards,
-                        $"There's nothing here yet -- {node.Type} nodes aren't implemented (M24 is structure only). "
-                        + "Made camp instead.");
+                case RunNodeType.Rest:
+                    ShowCamp(partyList, benchList, inventory, rewards,
+                        "A quiet spot to recover. Rest is open below.", openRestPanel: true);
+                    break;
+                case RunNodeType.Treasure:
+                    ShowCamp(partyList, benchList, inventory, rewards, GrantTreasure(inventory));
+                    break;
+                default: // Unknown, Merchant -- still no content behind them.
+                    ShowCamp(partyList, benchList, inventory, rewards,
+                        $"There's nothing here yet -- {node.Type} nodes aren't implemented. Made camp instead.");
                     break;
             }
+        }
+
+        /// <summary>A Treasure node's payoff (M25): one potion, kind picked at random
+        /// among the three that exist, added via BattleInventory.Grant. The random pick
+        /// itself is the one piece of this that's deliberately NOT pure/testable --
+        /// UnityEngine.Random can't run headlessly, so it stays here on the
+        /// MonoBehaviour side, same split DamageCalculator's crit roll and
+        /// EscapeCalculator's flee roll already use; Grant's own clamping/bookkeeping is
+        /// the pure part, and that's what BattleInventoryTests actually covers.</summary>
+        static string GrantTreasure(BattleInventory inventory)
+        {
+            if (inventory == null) return "Found a chest, but had nowhere to put what was inside.";
+
+            var kinds = new[] { PotionKind.Hp, PotionKind.Mp, PotionKind.Multi };
+            var kind = kinds[Random.Range(0, kinds.Length)];
+            var slot = inventory.Slot(kind);
+            int gained = inventory.Grant(kind, 1);
+
+            if (gained > 0) return $"Found a chest: +{gained} {slot.Potion.displayName}. ({slot.Count} carried now.)";
+            return slot?.Potion == null
+                ? "Found a chest, but couldn't tell what was inside -- run Build Assets From Manifest."
+                : $"Found a chest, but you're already carrying the max {slot.Potion.displayName} ({slot.Count}).";
         }
 
         /// <summary>Tears the battle down and stands up the camp screen in its place
@@ -177,19 +209,20 @@ namespace Game.Battle
             ShowCamp(world.PlayerUnits.ToList(), world.Bench.ToList(), world.Inventory, world.Banked, arrival);
         }
 
-        /// <summary>Shared by BootCamp and EnterNode's no-content branch -- both end up
-        /// at the same screen with the same wiring, they just arrive with different
-        /// arrival text and (in EnterNode's case) party/bench lists that were already
-        /// extracted rather than pulled fresh from a BattleWorld.</summary>
+        /// <summary>Shared by BootCamp and every EnterNode branch that doesn't boot a
+        /// battle -- they all end up at the same screen with the same wiring, just with
+        /// different arrival text, party/bench lists that were already extracted rather
+        /// than pulled fresh from a BattleWorld, and (M25) whether a Rest node wants the
+        /// Rest checklist opened immediately.</summary>
         void ShowCamp(List<BattleUnit> party, List<BattleUnit> bench, BattleInventory inventory,
-            BattleRewards rewards, string arrival)
+            BattleRewards rewards, string arrival, bool openRestPanel = false)
         {
             ClearChildren();
 
             var campGo = new GameObject("CampScreen");
             campGo.transform.SetParent(transform, false);
             var camp = campGo.AddComponent<CampScreen>();
-            camp.Init(_run, party, bench, inventory, rewards, arrival);
+            camp.Init(_run, party, bench, inventory, rewards, arrival, openRestPanel);
             camp.OnNodeChosen += node => EnterNode(node, party, bench, inventory, rewards);
             camp.OnLeaveDungeonRequested += () =>
             {

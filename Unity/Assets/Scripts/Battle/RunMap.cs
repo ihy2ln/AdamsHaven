@@ -6,11 +6,13 @@ namespace Game.Battle
 {
     /// <summary>Node type on a dungeon run's branching path (M24). Matches the project
     /// owner's reference image 1:1 -- Unknown/Merchant/Treasure/Rest/Enemy/Elite -- so
-    /// the icon set can be swapped in later without touching this enum. Only Enemy and
-    /// Elite have real content behind them right now (see BattleBootstrap.EnterNode);
-    /// the other four are structurally real but functionally inert until their own
-    /// systems exist (a shop, a treasure table, etc.) -- see RunMap's own doc for why
-    /// that's an intentional split, not an oversight.</summary>
+    /// the icon set can be swapped in later without touching this enum. Four of six have
+    /// real content behind them (see BattleBootstrap.EnterNode): Enemy/Elite boot a real
+    /// battle, Rest (M25) opens camp's existing per-unit Rest checklist directly,
+    /// Treasure (M25) grants a potion via BattleInventory.Grant. Unknown and Merchant are
+    /// still structurally real but functionally inert until their own systems exist (an
+    /// event table, a shop) -- see RunMap's own doc for why that's an intentional split,
+    /// not an oversight.</summary>
     public enum RunNodeType { Unknown, Merchant, Treasure, Rest, Enemy, Elite }
 
     /// <summary>One node in a RunMap. `Column` is layout-only (which slot in its floor

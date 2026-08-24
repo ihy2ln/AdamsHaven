@@ -153,6 +153,13 @@ compile (unrelated to this work, not touched by it, resolved before this session
 -- the full 132-test EditMode suite passes clean now, including this milestone's own
 126, but none of it has been played yet.
 
+M25 (this session) gives two more of M24's six node types real function. **Rest**
+now opens camp's existing per-unit Rest checklist immediately on arrival, instead of
+just landing at the generic camp screen. **Treasure** grants one potion (kind picked
+at random among Hp/Mp/Multi) into the carried `BattleInventory`, via a new, tested
+`BattleInventory.Grant` method. Only Unknown and Merchant are still inert. See item
+23 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -982,6 +989,36 @@ compile (unrelated to this work, not touched by it, resolved before this session
       doesn't prove the Dungeon Map panel is legible, that node buttons land where they
       should, or that the whole escape/camp/rest/dungeon-map loop feels right end to
       end. That needs an actual play session, same as M19-M23 before it.
+23. **Rest and Treasure nodes get real function -- M25.** The project owner's own
+    priority order: give the M24 placeholder nodes real behavior before starting on
+    boss content. Two of the four inert types now do something; Unknown and Merchant
+    are the only ones left with nothing behind them.
+    - **Rest opens camp's existing per-unit Rest checklist immediately on arrival**
+      (`CampScreen.Init` gained an `openRestPanel` flag) instead of landing on the
+      generic camp screen and making the player find the Rest button themselves. No new
+      mechanic -- M22's per-unit Rest (pick who, 1 material each) is exactly what opens;
+      a Rest node is just a guaranteed, no-extra-click way to reach it.
+    - **Treasure grants one potion**, kind picked at random among Hp/Mp/Multi, via a new
+      `BattleInventory.Grant(kind, amount)` method. Deliberately split the same way
+      `DamageCalculator`'s crit roll and `EscapeCalculator`'s flee roll already are: the
+      random *pick* lives on `BattleBootstrap.GrantTreasure` (untestable headlessly,
+      `UnityEngine.Random`), while `Grant`'s own clamping/bookkeeping is pure C# and
+      genuinely tested. Every party already starts a fresh run with 5 of each potion
+      (M13's placeholder stock), so a chest's `+1` is a small bump rather than a
+      dramatic find -- exercising the *pickup path* (an item landing in inventory
+      mid-run) was the point, not tuning a reward.
+    - **A pickup can fail honestly.** `Grant` returns 0 (not a fake success) if the
+      slot's `PotionDefinition` was never built or the stack's already at `maxStack` --
+      `GrantTreasure` reads that back and reports "already carrying the max" or
+      "couldn't tell what was inside" rather than claiming a find that didn't happen.
+    - New tests: `BattleInventoryTests.cs` (new file, 5 tests) -- adds correctly, clamps
+      to `maxStack`, a full stack gains nothing, an unbuilt potion slot gains nothing
+      rather than faking a pickup, zero/negative amounts are no-ops.
+    - **Deliberately deferred**: reshaping the dungeon graph itself into the specific
+      curated sequence the project owner described next -- two distinct normal fights
+      (not the same map repeated across every Enemy/Elite node), then rest, then a
+      treasure chest, then a boss reusing existing character assets at boosted stats.
+      That depends on boss content existing first, which is next.
 
 ## Roster
 
@@ -1059,6 +1096,7 @@ costs the turn.
 | M22 | Per-unit Rest (1 material/member, choose who) replacing M20's flat whole-party cost | *(not yet tagged)* |
 | M23 | Victory banner gains Camp and Retry Battle alongside Next Battle | *(not yet tagged)* |
 | M24 | Branching dungeon path (RunMap/DungeonRun), Slay-the-Spire style, replacing the linear 2-map sequence | *(not yet tagged)* |
+| M25 | Rest and Treasure nodes get real function (per-unit Rest checklist, a granted potion) | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -1356,16 +1394,17 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play the whole loop end to end (M19-M24): fight, leave, camp, choose a node,
+2. **Play the whole loop end to end (M19-M25): fight, leave, camp, choose a node,
    repeat.** This is the newest, least-played stretch of the project -- test-verified as
-   of this session (132/132 headless), but never exercised by an actual person. Fight,
-   flee/quit/win, land in camp, spend materials on Rest (per-unit -- pick who), open the
-   Dungeon Map and pick the next node. Specific things worth a second look once played:
-   whether the flee odds feel right against a real fight (`EscapeCalculator.cs`'s
-   constants are one block at the top), whether the per-unit Rest checklist reads
-   clearly, and whether the placeholder Dungeon Map panel (plain coloured buttons, no
-   art yet) is even usable enough to navigate by, or whether it needs a pass before
-   anything else lands on top of it.
+   of this session, but never exercised by an actual person. Fight, flee/quit/win, land
+   in camp, walk a Rest node to open the per-unit checklist directly (pick who), walk a
+   Treasure node for a granted potion, open the Dungeon Map and pick the next node.
+   Specific things worth a second look once played: whether the flee odds feel right
+   against a real fight (`EscapeCalculator.cs`'s constants are one block at the top),
+   whether the per-unit Rest checklist reads clearly, whether the placeholder Dungeon
+   Map panel (plain coloured buttons, no art yet) is even usable enough to navigate by,
+   and whether a Rest/Treasure node dropping straight into its own screen (rather than
+   the main camp view first) reads as helpful or disorienting.
 3. **Play map 2.** M17's content is built (v9) and committed, so Rotfang/Deadeye/
    Hexweaver have their elements and ultimates live. **M18's `N` skip** (or the escape/
    camp loop above) gets you there without fighting map 1 first. Confirm the whole stack
@@ -1418,11 +1457,23 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 12. **Bigger meta-systems from the project owner's own "modern AAA" list.** Escape/flee
     (M19) and its economy (M20-M22) are done. **Equipment and save/persistence are both
     explicitly deferred by the project owner until the farm/town scene exists** -- gear
-    is meant to come with crafting there, not before. That leaves **boss phase/pattern
-    triggers** as the one remaining item that lives entirely inside the battle scene --
-    `MapDefinition.forbidEscape` is already the first hook it needs (M19), and it's the
-    natural pick if more battle-scene work is wanted before the farm/town boundary gets
-    built.
+    is meant to come with crafting there, not before. That leaves **boss content** as the
+    one remaining item that lives entirely inside the battle scene, and the project
+    owner has already scoped it: not a phase/pattern-trigger system, just a distinct
+    encounter reusing existing character assets at boosted stats (a third `MapDefinition`
+    -- or an `EnemyPlacement` stat multiplier on an existing one -- rather than new
+    mechanics). `MapDefinition.forbidEscape` (M19) is already the hook a boss fight
+    wants.
+    - **Once boss content exists, the project owner's explicit next step is reshaping
+      the dungeon graph itself** into a short, deliberate sequence rather than
+      `RunMapGenerator`'s randomized branching: two distinct normal fights (map 1's
+      roster, then map 2's -- currently every Enemy node reuses map 1 and every Elite
+      node reuses map 2 uniformly across the whole graph, which is exactly what "test
+      separate them" in the project owner's own words is asking to fix), a Rest node, a
+      Treasure node (already real as of M25 -- see item 23), then the new boss. Smaller
+      and more curated than the current 6-floor random graph; likely means either a
+      fixed `RunMapGenerator.Generate` variant or hand-authoring a `RunMap` outright
+      rather than reusing the branching generator for this specific test sequence.
 13. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
     reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
     are designed but not connected to this battle system yet — that's the actual "rest

@@ -1,3 +1,4 @@
+using System;
 using Game.Data;
 
 namespace Game.Battle
@@ -36,5 +37,22 @@ namespace Game.Battle
         };
 
         public bool HasAnyUsable => Hp.IsUsable || Mp.IsUsable || Multi.IsUsable;
+
+        /// <summary>Adds `amount` of `kind` to its slot, clamped to that potion's own
+        /// `maxStack` (M25 -- what a Treasure-node pickup calls). Deliberately pure and
+        /// Unity-independent (System.Math, not Mathf) so it's testable without a scene.
+        /// Returns how many were actually added, which can be less than `amount` (or 0)
+        /// if the stack was already near/at cap, or 0 outright if the slot's own
+        /// `Potion` reference was never set (missing built content) -- either way the
+        /// caller can report an honest "found nothing new" instead of claiming a pickup
+        /// that didn't happen.</summary>
+        public int Grant(PotionKind kind, int amount)
+        {
+            var slot = Slot(kind);
+            if (slot?.Potion == null || amount <= 0) return 0;
+            int before = slot.Count;
+            slot.Count = Math.Min(slot.Count + amount, slot.Potion.maxStack);
+            return slot.Count - before;
+        }
     }
 }

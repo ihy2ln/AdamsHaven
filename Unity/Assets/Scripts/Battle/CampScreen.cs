@@ -56,8 +56,14 @@ namespace Game.Battle
 
         GUIStyle _title, _body, _btn, _heading, _nodeBtn;
 
+        /// <summary>`openRestPanel` (M25) is what a Rest-node arrival passes true --
+        /// jumps straight to the Rest checklist instead of the main camp screen, since
+        /// that's the entire reason the player picked this node. `OpenRest()` only
+        /// touches `_restSelection`/`_showRest`, neither of which needs `BuildStyles()`
+        /// to have run yet, so calling it from Init (before OnGUI's first pass) is
+        /// safe.</summary>
         public void Init(DungeonRun run, List<BattleUnit> party, List<BattleUnit> bench,
-            BattleInventory inventory, BattleRewards banked, string arrivalLine)
+            BattleInventory inventory, BattleRewards banked, string arrivalLine, bool openRestPanel = false)
         {
             _run = run;
             _party = party ?? new List<BattleUnit>();
@@ -65,6 +71,7 @@ namespace Game.Battle
             _inventory = inventory;
             _banked = banked ?? new BattleRewards();
             _arrivalLine = arrivalLine;
+            if (openRestPanel) OpenRest();
         }
 
         void BuildStyles()
