@@ -210,5 +210,72 @@ namespace Game.Tests
             Assert.AreEqual(map.FinalNode.Id, run.CurrentNodeId);
             Assert.IsEmpty(run.AvailableNextNodes(), "the final node has no outgoing edges -- nowhere left to go.");
         }
+
+        // -- GenerateCuratedTestRun (M27) ----------------------------------------------
+
+        /// <summary>Pins the exact sequence from the project owner's own words: "a 2
+        /// normal fights, rest area, item chest area ... then a boss fight" -- with the
+        /// two normal fights kept distinct (Enemy then Elite, not the same type twice),
+        /// which is what makes them map 1's roster and map 2's roster separately rather
+        /// than the same fight repeated.</summary>
+        [Test]
+        public void CuratedTestRun_IsExactlyTheProjectOwnersFiveNodeSequence()
+        {
+            var map = RunMapGenerator.GenerateCuratedTestRun();
+
+            Assert.AreEqual(5, map.FloorCount);
+            var types = Enumerable.Range(0, 5).Select(f => map.NodesInFloor(f).Single().Type).ToList();
+            CollectionAssert.AreEqual(
+                new[] { RunNodeType.Enemy, RunNodeType.Elite, RunNodeType.Rest, RunNodeType.Treasure, RunNodeType.Elite },
+                types);
+        }
+
+        [Test]
+        public void CuratedTestRun_IsFullyLinearWithNoBranching()
+        {
+            var map = RunMapGenerator.GenerateCuratedTestRun();
+
+            for (int f = 0; f < map.FloorCount - 1; f++)
+                Assert.AreEqual(1, map.NodesInFloor(f).Single().NextNodeIds.Count,
+                    $"floor {f} should connect to exactly one node -- no branching in the curated sequence.");
+
+            Assert.IsEmpty(map.FinalNode.NextNodeIds, "the boss node should have nowhere further to go.");
+        }
+
+        /// <summary>The same connectivity invariants Generate()'s own random maps are
+        /// held to -- a hand-authored map should satisfy them just as strictly as a
+        /// generated one.</summary>
+        [Test]
+        public void CuratedTestRun_SatisfiesTheSameConnectivityInvariantsAsAGeneratedMap()
+        {
+            var map = RunMapGenerator.GenerateCuratedTestRun();
+
+            Assert.AreEqual(1, map.NodesInFloor(map.FloorCount - 1).Count, "exactly one node on the final floor.");
+            for (int f = 0; f < map.FloorCount; f++)
+                foreach (var node in map.NodesInFloor(f))
+                    foreach (var nextId in node.NextNodeIds)
+                        Assert.AreEqual(f + 1, map.Get(nextId).Floor, "every edge should connect to the very next floor.");
+        }
+
+        /// <summary>End to end: a DungeonRun walking this map hits exactly one choice
+        /// per floor (never a branch), and IsComplete only becomes true on the boss
+        /// node -- the same "final node is the boss" contract BattleBootstrap.EnterNode
+        /// leans on for BossStatMultiplier (M26).</summary>
+        [Test]
+        public void DungeonRun_WalkingTheCuratedSequence_HitsExactlyOneChoicePerFloorAndCompletesOnTheBoss()
+        {
+            var run = new DungeonRun(RunMapGenerator.GenerateCuratedTestRun());
+
+            for (int f = 0; f < run.Map.FloorCount; f++)
+            {
+                var available = run.AvailableNextNodes();
+                Assert.AreEqual(1, available.Count, $"floor {f} should offer exactly one next node.");
+                Assert.IsFalse(run.IsComplete, $"shouldn't be complete before entering floor {run.Map.FloorCount - 1}.");
+                run.MoveTo(available[0].Id);
+            }
+
+            Assert.IsTrue(run.IsComplete, "entering the final node should complete the run.");
+            Assert.AreEqual(RunNodeType.Elite, run.Map.Get(run.CurrentNodeId.Value).Type, "the boss node should be Elite.");
+        }
     }
 }

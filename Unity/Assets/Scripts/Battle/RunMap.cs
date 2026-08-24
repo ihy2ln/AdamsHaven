@@ -131,6 +131,45 @@ namespace Game.Battle
             (RunNodeType.Elite, 80), (RunNodeType.Enemy, 20),
         };
 
+        /// <summary>A fixed, hand-authored 5-node linear sequence (M27) -- the project
+        /// owner's own explicit test plan, in their own words: "we can just have 3
+        /// fights, the first two that are currently in the game, test [them] separate...
+        /// a 2 normal fights, rest area, item chest area acquiring a potion to test
+        /// items going into inventory, then a boss fight." One node per floor, no
+        /// branching, in place of `Generate`'s randomized graph.
+        ///
+        /// Why this exists alongside `Generate` rather than replacing it: with only two
+        /// distinct built rosters behind Enemy/Elite (see `BattleBootstrap
+        /// .MapIndexForNode`), a randomized branching graph is mostly illusory choice --
+        /// every Enemy node is the same fight and every Elite node is the same fight
+        /// regardless of which one the player picks. A small, deliberate, linear
+        /// sequence is more honest about what there actually is to test right now, and
+        /// guarantees the two distinct rosters are fought separately rather than one of
+        /// them dominating a random walk. `BattleBootstrap.Boot()` calls this instead of
+        /// `Generate` for the time being; `Generate` and its own tests are untouched and
+        /// ready to come back once there's enough real per-node content to make
+        /// branching a genuine decision again.
+        ///
+        /// The final node -- Elite, same as `Generate`'s own final-floor bias -- is
+        /// automatically the boss encounter with no extra wiring: `BattleBootstrap
+        /// .EnterNode` already treats the run's single final-floor node as the boss
+        /// (`_run.IsComplete`, M26), and a 1-node final floor is exactly what `RunMap`'s
+        /// own convergence invariant already requires, satisfied trivially here since
+        /// every floor in this sequence has exactly one node.</summary>
+        public static RunMap GenerateCuratedTestRun()
+        {
+            var nodes = new List<RunMapNode>
+            {
+                new() { Id = 0, Floor = 0, Column = 0, Type = RunNodeType.Enemy },    // map 1's roster
+                new() { Id = 1, Floor = 1, Column = 0, Type = RunNodeType.Elite },    // map 2's roster
+                new() { Id = 2, Floor = 2, Column = 0, Type = RunNodeType.Rest },
+                new() { Id = 3, Floor = 3, Column = 0, Type = RunNodeType.Treasure },
+                new() { Id = 4, Floor = 4, Column = 0, Type = RunNodeType.Elite },    // boss: map 2's roster, BossStatMultiplier-scaled
+            };
+            for (int i = 0; i < nodes.Count - 1; i++) nodes[i].NextNodeIds.Add(nodes[i + 1].Id);
+            return new RunMap(floorCount: nodes.Count, nodes);
+        }
+
         public static RunMap Generate(int seed, int floorCount = DefaultFloorCount,
             int minWidth = MinFloorWidth, int maxWidth = MaxFloorWidth, int pathCount = PathCount)
         {

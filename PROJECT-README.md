@@ -171,6 +171,18 @@ ScriptableObject-corruption gotcha. The Dungeon Map panel labels that node "BOSS
 the in-battle title bar flags it too. Retrying a boss fight stays a boss fight (reads
 `BattleWorld.IsBoss` back rather than re-deciding). See item 24 below.
 
+M27 (this session) replaces the randomized branching graph with the project owner's own
+**curated test sequence**, in their words: "we can just have 3 fights, the first two
+that are currently in the game, test [them] separate... a 2 normal fights, rest area,
+item chest area acquiring a potion to test items going into inventory, then a boss
+fight." A new `RunMapGenerator.GenerateCuratedTestRun()` builds a fixed, hand-authored
+5-node linear sequence -- Enemy (map 1), Elite (map 2), Rest, Treasure, Elite (boss) --
+and `BattleBootstrap.Boot()` now calls it instead of the randomized `Generate`. `Generate`
+itself, and its own 12-test suite, are untouched -- kept for whenever there's enough
+real per-node content to make branching a genuine choice again rather than mostly
+illusory (every Enemy node was the same fight regardless of which one got picked). See
+item 25 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -1066,6 +1078,38 @@ the in-battle title bar flags it too. Retrying a boss fight stays a boss fight (
       fights, then rest, then treasure, then this boss) instead of
       `RunMapGenerator`'s randomized branching. Boss content existing was the
       prerequisite; the reshape is next.
+25. **A curated 5-node test dungeon, replacing the randomized graph -- M27.** The
+    project owner's exact next step from item 23/24: "we can just have 3 fights, the
+    first two that are currently in the game, test [them] separate... then a boss
+    fight... a 2 normal fights, rest area, item chest area acquiring a potion to test
+    items going into inventory, then a boss fight."
+    - **`RunMapGenerator.GenerateCuratedTestRun()`** (new): a fixed, hand-authored,
+      fully linear 5-floor `RunMap` -- one node per floor, no branching. In order:
+      **Enemy** (map 1's roster, Husk/Warden/Stinger), **Elite** (map 2's roster,
+      Rotfang/Deadeye/Hexweaver -- the two fights the project owner wanted "test
+      separate," now genuinely separate steps rather than both being reachable from
+      every Enemy/Elite node across a big random graph), **Rest**, **Treasure**, then
+      **Elite** again as the final node.
+    - **The boss needed no new wiring at all.** `RunMap`'s convergence invariant
+      already requires exactly one node on the final floor, and `BattleBootstrap
+      .EnterNode` already treats that node as the boss (`_run.IsComplete`, M26) --
+      a 5-node linear map with one node per floor satisfies that invariant trivially,
+      so the final Elite node is automatically `BossStatMultiplier`-scaled with zero
+      code changes beyond authoring the sequence itself.
+    - **`BattleBootstrap.Boot()` now calls `GenerateCuratedTestRun()` instead of
+      `Generate()`.** Since floor 0 here is always Enemy (never Unknown, unlike the
+      random generator), the "prefer an Enemy node among floor 0's options" fallback
+      Boot() needed for M24's randomized graph is gone too -- there's only ever one
+      option, and it's always the right one.
+    - **`Generate()` and its randomized branching are untouched, not removed.** Kept
+      deliberately: once there's enough real per-node content that Enemy/Elite nodes
+      stop being the same two fights regardless of which one gets picked, branching
+      becomes a genuine choice again rather than mostly illusory, and `Generate()`'s
+      own 12-test suite is still there proving the connectivity guarantees hold.
+    - New tests: 4 in `RunMapTests.cs` -- the exact node-type sequence, fully linear
+      with no branching, the same connectivity invariants `Generate()`'s random maps
+      are held to, and a `DungeonRun` walking the whole sequence end to end hits
+      exactly one choice per floor and completes precisely on the boss node.
 
 ## Roster
 
@@ -1145,6 +1189,7 @@ costs the turn.
 | M24 | Branching dungeon path (RunMap/DungeonRun), Slay-the-Spire style, replacing the linear 2-map sequence | *(not yet tagged)* |
 | M25 | Rest and Treasure nodes get real function (per-unit Rest checklist, a granted potion) | *(not yet tagged)* |
 | M26 | Boss content -- the run's final node scales its existing roster's stats (`BossStatMultiplier`), no new content | *(not yet tagged)* |
+| M27 | Curated 5-node test dungeon (`GenerateCuratedTestRun`) replaces the randomized graph in `Boot()`: map1 fight, map2 fight, rest, treasure, boss | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -1442,86 +1487,77 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
 1. **On-device Android verification** — see "Known gaps." Top of the list, not a
    someday item: the project owner's explicit priority is Android first, Windows
    second, iPhone third. Blocked on `adb` access.
-2. **Play the whole loop end to end (M19-M26): fight, leave, camp, choose a node,
-   reach the boss, repeat.** This is the newest, least-played stretch of the project --
-   test-verified as of this session, but never exercised by an actual person. Fight,
-   flee/quit/win, land in camp, walk a Rest node to open the per-unit checklist directly
-   (pick who), walk a Treasure node for a granted potion, open the Dungeon Map and pick
-   the next node, eventually reach the run's final "BOSS"-labeled node and confirm the
-   enemy actually hits harder and tanks more (`BossStatMultiplier`, 1.6x). Specific
-   things worth a second look once played: whether the flee odds feel right against a
-   real fight (`EscapeCalculator.cs`'s constants are one block at the top), whether the
-   per-unit Rest checklist reads clearly, whether the placeholder Dungeon Map panel
-   (plain coloured buttons, no art yet) is even usable enough to navigate by, whether a
-   Rest/Treasure node dropping straight into its own screen reads as helpful or
-   disorienting, and whether 1.6x actually feels like a boss or is too mild/too brutal
-   against a party that just walked several floors of normal fights.
-3. **Play map 2.** M17's content is built (v9) and committed, so Rotfang/Deadeye/
-   Hexweaver have their elements and ultimates live. **M18's `N` skip** (or the escape/
-   camp loop above) gets you there without fighting map 1 first. Confirm the whole stack
-   against a second roster at once -- Poison/Attack Down/Defense Down/Stun visibly doing
-   something, auto mode reaching for offensive Skill Moves, Break/crit landing, and
-   M17's own additions: Sable hitting Rotfang for 1.5x, Deadeye's Storm Volley hitting
-   all three party members at three different multipliers, and Hexweaver's Blood Chorus
-   healing its own side. Auto mode alone shows all of this -- `ChooseAutoSkill` fires an
-   ultimate the instant a gauge fills, on either faction -- so this needs a play-through,
-   not manual input.
-4. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
+2. **Play the whole curated run end to end (M19-M27): map 1's fight, map 2's fight,
+   camp/rest, a treasure pickup, the boss, in that exact order.** This is the newest,
+   least-played stretch of the project -- test-verified as of this session, but never
+   exercised by an actual person. `Boot()` now walks this fixed sequence automatically,
+   so playing it straight through covers everything at once: map 1 (Husk/Warden/
+   Stinger), then map 2 (Rotfang/Deadeye/Hexweaver -- confirm Poison/Attack Down/Defense
+   Down/Stun are all visibly doing something, auto mode reaching for offensive Skill
+   Moves, Break/crit landing, and M17's own additions: Sable hitting Rotfang for 1.5x,
+   Deadeye's Storm Volley hitting all three party members at three different
+   multipliers, Hexweaver's Blood Chorus healing its own side -- `ChooseAutoSkill` fires
+   an ultimate the instant a gauge fills, so this needs a play-through, not manual
+   input), then the Rest node (per-unit checklist opens directly, pick who), then the
+   Treasure node (a granted potion), then the run's final "BOSS"-labeled node
+   (`BattleWorld.BossStatMultiplier`, 1.6x -- confirm it actually hits harder and tanks
+   more). Specific things worth a second look once played: whether the flee odds feel
+   right against a real fight (`EscapeCalculator.cs`'s constants are one block at the
+   top), whether the per-unit Rest checklist reads clearly, whether the placeholder
+   Dungeon Map panel (plain coloured buttons, no art yet) is even usable enough to
+   navigate by, whether a Rest/Treasure node dropping straight into its own screen reads
+   as helpful or disorienting, and whether 1.6x actually feels like a boss or is too
+   mild/too brutal against a party that just fought two normal battles first.
+3. **Retune M17's first-pass numbers against that fight.** See "Known gaps" for the two
    specific things to watch (Blood Chorus sustain, Storm Volley burst on the healer).
    The profiles are all in one table (`CombatStats` in `Data/Core/StatBlock.cs`) and the
    ultimates are 3 adjacent lines in `BuildMap2EnemySkills`, so a retune is a one-file
    edit plus a rebuild. Same caveat as item 2 above applies to M20-M22's numbers too --
    by the project owner's own direction, none of them (EXP, material kinds, rest cost)
    are meant to be final yet.
-5. **Screenshot the manual-mode-only HUD for the wiki.** `Combat-Systems.md` has real
+4. **Screenshot the manual-mode-only HUD for the wiki.** `Combat-Systems.md` has real
    in-game screenshots for everything auto mode surfaces (roster bars, turn-order strip)
    but nothing for the manual-only pieces -- the colour-coded action row (now BA/SM/U/R/
    S/I, with Flee and Quit relocated in M21) and the Unit Stats card -- because synthetic
    clicks can't reach the standalone build from this environment. A couple of screenshots
    from a real play session, plus one of camp/rest, would fill the gap.
-6. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
+5. **Author real `SkillEffect` assets (M15).** Every Skill Move currently falls back to
    the map's generic impact FX, since no skill-specific effect exists yet -- the hook
    (`SkillDefinition.effect`) is ready the moment art/effect sheets are available, no
    further code changes needed to attach one.
-7. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
+6. **A real potion/item economy** (drop rates, a shop, farm integration) -- M13 shipped
    the mechanic with a hardcoded placeholder stock (5 of each C-rank potion every fresh
    battle) because no economy system exists yet to source real starting inventory from.
    M20's materials are the same kind of placeholder for a different resource -- see
    "Known gaps" on why both should eventually route through `MaterialDefinition`/
    `DropTable` instead of their current stand-ins.
-8. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
+7. Choose/build final FMV clip assets (Unity Asset Store base or new ComfyUI
    generations) -- explicitly deferred by the project owner until the foundation above
    is laid out further. The components are ready (M12) whenever this comes back up.
-9. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
+8. Frame-accurate impact-FX sync using the now-correct `impactFrames` data (M12/M14's
    fix) -- currently `PlayImpactBeat` just uses the clip's own runtime as a flat hold,
    not synced to the clip's actual hit frame.
-10. Consider extending the status-effect system if content wants to go beyond the 7
+9. Consider extending the status-effect system if content wants to go beyond the 7
     types already built (e.g. a Taunt/aggro mechanic, shields, cleanse effects) -- the
     core tick/apply/multiplier plumbing (M13) is general enough to add types to without
     restructuring it. `Poison` itself is still unused outside of Rotfang.
-11. More enemy variety beyond map 2's 3, if the project owner wants it -- the
+10. More enemy variety beyond map 2's 3, if the project owner wants it -- the
     `BuildCustomEnemy` pattern (M14) makes a new enemy cheap to add as long as it can
     borrow art from an existing `CharacterDefinition` (no new art generation needed).
     Since M17 that path also takes an element and an ultimate as required parameters, so
     a new enemy can't silently ship outside the combat systems the way these three
     originally did.
-12. **Bigger meta-systems from the project owner's own "modern AAA" list.** Escape/flee
-    (M19) and its economy (M20-M22) are done. Boss content (M26) is done, scoped exactly
-    as asked -- the run's final node, same assets, `BossStatMultiplier`-scaled. **Equipment
-    and save/persistence remain explicitly deferred by the project owner until the
-    farm/town scene exists** -- gear is meant to come with crafting there, not before.
-    That leaves nothing else on this list that lives entirely inside the battle scene;
-    the concrete next step is item 13 below, not a new system.
-13. **Reshape the dungeon graph into the project owner's curated test sequence** (their
-    explicit next step, named alongside boss content): two distinct normal fights (map
-    1's roster, then map 2's -- currently every Enemy node reuses map 1 and every Elite
-    node reuses map 2 uniformly across the whole graph, which is exactly what "test
-    separate them" in the project owner's own words is asking to fix), a Rest node, a
-    Treasure node (already real as of M25), then the boss (M26). Smaller and more
-    curated than the current 6-floor random graph; likely means either a fixed
-    `RunMapGenerator.Generate` variant or hand-authoring a `RunMap` outright rather than
-    reusing the branching generator for this specific test sequence.
-14. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
+11. **Bigger meta-systems from the project owner's own "modern AAA" list -- all done or
+    deferred.** Escape/flee (M19) and its economy (M20-M22): done. Boss content (M26):
+    done, scoped exactly as asked -- the run's final node, same assets,
+    `BossStatMultiplier`-scaled. The dungeon-graph reshape into the project owner's
+    curated test sequence (M27): done -- `RunMapGenerator.GenerateCuratedTestRun()`,
+    two distinct fights then rest then treasure then boss, wired into `Boot()`.
+    **Equipment and save/persistence remain explicitly deferred by the project owner
+    until the farm/town scene exists** -- gear is meant to come with crafting there, not
+    before. Nothing else on this list lives entirely inside the battle scene right now;
+    see item 2 above for the actual next step (play what M19-M27 built).
+12. Beyond the vertical slice: the roster is currently 6 fixed archetypes plus 3 bench
     reserves. FOUNDATION.md's broader systems (tier/fusion, gacha, farm/town economy)
     are designed but not connected to this battle system yet — that's the actual "rest
     of the game," this slice only proves the battle screen works.

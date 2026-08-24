@@ -37,15 +37,14 @@ namespace Game.Battle
         [ContextMenu("Boot Battle")]
         public void Boot()
         {
-            _run = new DungeonRun(RunMapGenerator.Generate(Random.Range(int.MinValue, int.MaxValue)));
-            var start = _run.AvailableNextNodes();
-            // Prefer an Enemy node among floor 0's options over an inert placeholder
-            // one (floor 0 can roll Unknown too -- see RunMapGenerator.FirstFloorWeights)
-            // -- a first launch should always drop the player into an actual fight, the
-            // way every version of this project has before M24, not sometimes land them
-            // on a "nothing here yet" camp screen with nothing to compare it against.
-            var first = start.FirstOrDefault(n => n.Type == RunNodeType.Enemy) ?? start[0];
-            EnterNode(first, null, null, null, null);
+            // GenerateCuratedTestRun (M27), not Generate: the project owner's own fixed
+            // test sequence -- map 1's fight, map 2's fight, rest, treasure, boss -- in
+            // place of the randomized branching graph. See its own doc comment on
+            // RunMapGenerator for why. Floor 0 here is always Enemy, so there's no
+            // "prefer an Enemy node" fallback to write the way M24's random Generate()
+            // needed (floor 0 there could roll Unknown too).
+            _run = new DungeonRun(RunMapGenerator.GenerateCuratedTestRun());
+            EnterNode(_run.AvailableNextNodes()[0], null, null, null, null);
         }
 
         /// <param name="isBoss">M26 -- scales the enemy roster's stats up
