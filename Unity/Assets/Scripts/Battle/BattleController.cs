@@ -22,7 +22,7 @@ namespace Game.Battle
     public enum BattleOutcome { InProgress, PlayerVictory, EnemyVictory, Escaped, Quit }
 
     /// <summary>Which top-level action a manual-mode player turn resolved to.</summary>
-    public enum ChosenAction { None, Skill, Reposition, Sub, Item, Escape, Quit }
+    public enum ChosenAction { None, Skill, Reposition, Sub, Item, Escape }
 
     /// <summary>Drives what BattleHud shows during a manual-mode player turn.</summary>
     public enum ActionPhase { Idle, ChooseAction, ChooseBench, ChooseTarget }
@@ -201,6 +201,9 @@ namespace Game.Battle
             // Works while paused too -- Update isn't gated by Time.timeScale, and the
             // next map's Init clears Paused anyway.
             if (Input.GetKeyDown(KeyCode.N)) SkipToNextMap();
+            // F matches its new home on the persistent HUD (M21), where every other
+            // button carries a key. ChooseEscape guards the timing itself.
+            if (Input.GetKeyDown(KeyCode.F)) ChooseEscape();
             if (Input.GetKeyDown(KeyCode.T)) ToggleMode();
             if (Input.GetKeyDown(KeyCode.Escape)) SetPaused(!Paused);
 
@@ -291,17 +294,38 @@ namespace Game.Battle
         /// coroutine's timeline like every other action.</summary>
         public void ChooseEscape()
         {
-            if (!CanEscape) return;
+            if (!CanEscape || !IsAwaitingAction) return;
             _chosenAction = ChosenAction.Escape;
         }
 
-        /// <summary>Player picked Quit (M20) -- abandon the fight outright. No roll and
-        /// no speed check, unlike Flee: quitting always works. What it costs is the
-        /// battle's entire haul, which is exactly the trade -- quitting is free when
-        /// you've earned nothing and ruinous once you have. Still routed through the
-        /// action queue rather than resolved here, so it spends the turn's slot like
-        /// every other action and can't fire mid-animation.</summary>
-        public void ChooseQuit() => _chosenAction = ChosenAction.Quit;
+        /// <summary>Whether a manual player turn is currently parked waiting for the
+        /// player to pick something. Since M21 moved Flee out of the action row and onto
+        /// the persistent HUD, the button is on screen during enemy turns and animations
+        /// too -- this is what keeps it greyed out then, instead of quietly setting a
+        /// choice that the next turn's reset would throw away.</summary>
+        public bool IsAwaitingAction => Phase == ActionPhase.ChooseAction;
+
+        /// <summary>Abandon the fight outright (M20; moved to the pause menu in M21).
+        /// No roll and no speed check, unlike Flee: quitting always works. What it costs
+        /// is the battle's entire haul -- free when you've earned nothing, ruinous once
+        /// you have.
+        ///
+        /// Resolves immediately rather than queueing as a turn action, which is the
+        /// change M21's move to the pause menu brought with it. Everything else in that
+        /// menu -- Restart, Skip -- acts the moment you press it, and gating "I'm done
+        /// with this fight" behind whose turn it happens to be made it feel broken when
+        /// it did nothing during an enemy turn. Fleeing stays turn-gated, because
+        /// fleeing is a move the party makes and can fail at; quitting isn't.</summary>
+        public void QuitBattle()
+        {
+            if (HasLeftBattle || Outcome != BattleOutcome.InProgress) return;
+            if (_runCoroutine != null) { StopCoroutine(_runCoroutine); _runCoroutine = null; }
+            SetPaused(false);
+            PendingActor = null;
+            Phase = ActionPhase.Idle;
+            _pendingTargets = new List<BattleUnit>();
+            LeaveBattle(BattleOutcome.Quit, keepRewards: false);
+        }
 
         /// <summary>Player picked Reposition -- swap column with an adjacent ally.</summary>
         public void ChooseReposition()
@@ -582,12 +606,6 @@ namespace Game.Battle
                 case ChosenAction.Escape:
                 {
                     ResolveEscape(unit);
-                    yield return new WaitForSeconds(ImpactHoldSeconds);
-                    break;
-                }
-                case ChosenAction.Quit:
-                {
-                    LeaveBattle(BattleOutcome.Quit, keepRewards: false);
                     yield return new WaitForSeconds(ImpactHoldSeconds);
                     break;
                 }

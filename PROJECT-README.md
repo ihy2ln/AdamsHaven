@@ -114,6 +114,12 @@ free when you've just started and ruinous once you're deep, which is the whole p
 Also lands `Tools/typecheck.sh`, which compiles the project without taking Unity's
 lock -- see item 17 below.
 
+M21 (this session) declutters the action row after the project owner played M20 and
+reported it crowded: **Flee moved to a fixed slot under the Pause button** (with its live
+odds in the label, and an `F` key), and **Quit moved into the pause menu** (with the haul
+it would cost in the label). The six buttons left in the row are all combat actions aimed
+at the field; the two that left were the ones about leaving it. See item 19 below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -777,6 +783,33 @@ lock -- see item 17 below.
     net472 and resolves `[Test]` through mscorlib; referencing either alone fails and
     referencing both collides, so it uses netstandard.dll plus the netfx *shim* mscorlib,
     which type-forwards instead of defining.
+19. **Action-row declutter -- M21.** The first change in a while driven by actually
+    playing the thing: the project owner reported the bottom action row cluttered at
+    eight buttons, and both of the ones that moved were the odd ones out. Everything left
+    in the row (BA/SM/U/R/S/I) is a combat action aimed at the field; Flee and Quit are
+    about leaving it.
+    - **Flee sits under the Pause button now**, a fixed slot at the top right alongside
+      Pause/Turn Log/Keybinds. Two wins beyond the decluttering: it keeps one position
+      instead of moving with whichever unit is acting, and its label carries the live
+      odds (`Flee 65% +2 (F)`), so the gamble stays legible without opening anything.
+      Greyed out unless a player turn is actually waiting on a choice --
+      `BattleController.IsAwaitingAction`, new -- because fleeing spends that turn, so
+      there has to be a turn to spend. It also gained a real **`F` key**, matching every
+      other button in that column.
+    - **Quit moved to the pause menu, and stopped being a turn action.** That second part
+      is the substantive change: M20 routed it through the action queue so it cost the
+      turn's slot, but everything else in the pause menu (Restart, Skip) acts the instant
+      you press it, and a "Quit Battle" that silently did nothing during an enemy turn
+      read as broken. `QuitBattle()` now resolves immediately -- stops the coroutine,
+      unpauses, and leaves. **Fleeing stays turn-gated**, because fleeing is a move the
+      party makes and can fail at; quitting isn't either of those things.
+    - **The stake still shows, just in the label**: `Quit Battle -- lose 34 EXP, 2 Hide`,
+      or `-- nothing to lose`. That it's free early and expensive late *is* the mechanic,
+      so hiding it behind a bare "Quit Battle" would have thrown away the decision the
+      whole of M20 exists to create.
+    - **The pause menu's old "Quit" is now "Exit Game".** Two buttons both called Quit,
+      three rows apart, one abandoning a fight and one closing the application, is a trap
+      rather than a menu.
 
 ## Roster
 
@@ -850,6 +883,7 @@ costs the turn.
 | M18 | Battle skip (`N` / Pause menu) -- forfeit the current fight, carry the party to the next stage | *(not yet tagged)* |
 | M19 | Escape/flee -- speed-based chance with per-failure escalation, `Escaped` outcome, `forbidEscape` map hook | *(not yet tagged)* |
 | M20 | Escape/quit economy (EXP + materials, entry-stat restore), camp screen, `Tools/typecheck.sh` | *(not yet tagged)* |
+| M21 | Action-row declutter -- Flee under Pause (+`F` key), Quit into the pause menu and now immediate | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -863,15 +897,17 @@ precedent: commit + docs update, no snapshot/zip.
 `T` toggle auto/manual mode · `L` open/close the turn log · `Esc` pause ·
 `Ctrl+Z`/`Ctrl+Y` undo/redo last turn · `R` restart after the battle ends · `N` skip
 this battle and move to the next stage (M18 -- also in the pause menu; unavailable on
-the last map or after a wipe) · `?` keybind legend. Manual mode: a player unit's turn opens a small 5-icon menu under their feet,
-all tapped -- **BA** (free basic attack), **SM** (opens the mana-cost Skill Move
-list; tap again to close it), **U** (ultimate, needs a full gauge), **R** (Reposition),
-**S** (Sub), **I** (opens the potion list -- Hp/Mp/Multi, tap again to close it), **F**
-(Flee, M19 -- rolls against the live odds shown under the row, and costs the turn either
-way), **Q** (Quit, M20 -- leave the fight instantly, forfeiting everything it earned)
--- then click a highlighted target on the field (BA/SM/Reposition/Item) or pick from
-the popup (SM's list, Sub's bench, Item's potion slots). U and F resolve immediately with
-no target pick.
+the last map or after a wipe) · `F` flee, keeping the haul (M19/M21 -- button under
+Pause, shows live odds, costs the turn either way) · `?` keybind legend. **Quit Battle**
+(instant, forfeits the haul) lives in the pause menu.
+
+Manual mode: a player unit's turn opens a 6-icon menu under their feet, all tapped --
+**BA** (free basic attack), **SM** (opens the mana-cost Skill Move list; tap again to
+close it), **U** (ultimate, needs a full gauge), **R** (Reposition), **S** (Sub), **I**
+(opens the potion list -- Hp/Mp/Multi, tap again to close it) -- then click a highlighted
+target on the field (BA/SM/Reposition/Item) or pick from the popup (SM's list, Sub's
+bench, Item's potion slots). U resolves immediately with no target pick. The row held
+8 icons briefly in M19/M20; Flee and Quit moved out in M21 (see item 19).
 
 ## How to run it
 

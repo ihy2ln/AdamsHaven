@@ -123,6 +123,7 @@ namespace Game.Battle
             DrawModeToggle(w);
             DrawUndoRedoButtons(w);
             DrawPauseButton(w);
+            DrawFleeButton(w);
             DrawLogToggle(w);
             DrawKeybindToggle(w);
 
@@ -158,6 +159,29 @@ namespace Game.Battle
             if (GUI.Button(new Rect(w - 304, 14, 140, 26), "Pause (Esc)", _btn)) _ctrl.SetPaused(true);
         }
 
+        /// <summary>Flee, parked directly under Pause (M21) rather than in the action
+        /// row. It reads as a sibling of Pause/Log/Keybinds -- something you do *to* the
+        /// battle rather than *in* it -- and it keeps one fixed position instead of
+        /// moving with whichever unit is acting.
+        ///
+        /// The label carries the live odds, so the gamble is legible without opening
+        /// anything, and it climbs visibly as attempts fail. Greyed unless a player turn
+        /// is actually waiting on a choice: fleeing spends that turn, so there has to be
+        /// a turn to spend.</summary>
+        void DrawFleeButton(int w)
+        {
+            bool usable = _ctrl.CanEscape && _ctrl.IsAwaitingAction;
+            string label = _ctrl.CanEscape
+                ? $"Flee {_ctrl.EscapeChanceNow:P0} (F)"
+                : "Flee -- blocked";
+            if (_ctrl.CanEscape && _ctrl.FailedEscapeAttempts > 0)
+                label = $"Flee {_ctrl.EscapeChanceNow:P0} +{_ctrl.FailedEscapeAttempts} (F)";
+
+            GUI.enabled = usable;
+            if (GUI.Button(new Rect(w - 304, 44, 140, 24), label, _smallBtn)) _ctrl.ChooseEscape();
+            GUI.enabled = true;
+        }
+
         void DrawLogToggle(int w)
         {
             string label = _showLog ? "Hide Log (L)" : "Turn Log (L)";
@@ -184,9 +208,9 @@ namespace Game.Battle
                 "R -- restart (after battle ends)",
                 "N -- skip this battle, go to the next stage",
                 "Click -- choose a highlighted target",
-                "BA/SM/U/R/S/I/F/Q -- tap. SM/I open a list; tap again to close",
-                "U needs a full ultimate gauge; F flees, keeping the haul (can fail)",
-                "Q quits outright -- always works, but abandons the haul",
+                "F -- flee (keeps the haul, can fail, costs the turn)",
+                "BA/SM/U/R/S/I -- tap. SM/I open a list; tap again to close",
+                "U needs a full ultimate gauge. Quit Battle is in the pause menu",
             };
             float y = panel.y + 32;
             foreach (var line in lines)
@@ -488,13 +512,16 @@ namespace Game.Battle
             var skillMoveOptions = _ctrl.SkillMoveOptions(actor);
             var ultimateSkill = actor.Definition.ultimateSkill;
 
-            // Q (Quit, M20) has no enable condition: walking away always works. What
-            // it costs is the battle's haul, which the label under the row spells out.
-            var labels = new[] { "BA", "SM", "U", "R", "S", "I", "F", "Q" };
+            // Six, not eight (M21). F and Q moved out to the persistent HUD and the
+            // pause menu respectively -- the project owner found the row cluttered, and
+            // the two of them were the odd ones out anyway: every button left here is a
+            // combat action aimed at the field, while fleeing and quitting are about
+            // leaving it.
+            var labels = new[] { "BA", "SM", "U", "R", "S", "I" };
             var enabled = new[]
             {
                 basicAttack != null, skillMoveOptions.Count > 0, actor.IsUltimateReady && ultimateSkill != null,
-                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem, _ctrl.CanEscape, true,
+                _ctrl.CanReposition, _ctrl.CanSub, _ctrl.CanUseItem,
             };
 
             float totalW = labels.Length * IconSize + (labels.Length - 1) * IconGap;
@@ -532,29 +559,7 @@ namespace Game.Battle
                     case "R": _ctrl.ChooseReposition(); break;
                     case "S": _ctrl.OpenBenchMenu(); break;
                     case "I": _showItemList = !_showItemList; break;
-                    case "F": _ctrl.ChooseEscape(); break;
-                    case "Q": _ctrl.ChooseQuit(); break;
                 }
-            }
-
-            // The two ways out of a fight, side by side, because the choice between
-            // them is the whole mechanic: F is a gamble that keeps the haul, Q is a
-            // certainty that bins it. Showing the haul next to the odds is what lets the
-            // player see that quitting is free early and ruinous late -- in the log
-            // after the fact would be far too late to matter.
-            {
-                var parts = new List<string>();
-                if (_ctrl.CanEscape)
-                {
-                    string odds = $"F: flee {_ctrl.EscapeChanceNow:P0}";
-                    if (_ctrl.FailedEscapeAttempts > 0) odds += $" (+{_ctrl.FailedEscapeAttempts})";
-                    parts.Add(odds + ", keep haul");
-                }
-                parts.Add(_ctrl.PendingRewards.IsEmpty
-                    ? "Q: quit, nothing to lose"
-                    : $"Q: quit, lose {_ctrl.PendingRewards.Describe()}");
-                GUI.Label(new Rect(startX - 60f, y + IconSize + 2f, totalW + 120f, 16f),
-                    string.Join("   |   ", parts), _barLabel);
             }
 
             if (_showSkillList) DrawSkillListPopup(actor, skillMoveOptions, startX + totalW / 2f, y);
@@ -574,8 +579,6 @@ namespace Game.Battle
             "R" => new Color(0.4f, 0.75f, 0.45f),
             "S" => new Color(0.6f, 0.45f, 0.8f),
             "I" => new Color(0.35f, 0.8f, 0.55f),
-            "F" => new Color(0.7f, 0.7f, 0.75f),
-            "Q" => new Color(0.55f, 0.5f, 0.5f),
             _ => Color.white,
         };
 
@@ -747,7 +750,9 @@ namespace Game.Battle
             if (_showSettings) { DrawSettingsPanel(w, h); return; }
             if (_showStats) { DrawAllUnitsStatsPanel(w, h); return; }
 
-            const float panelW = 320f, panelH = 400f;
+            // Wider than it was (M21): Quit Battle's label carries the whole haul, and
+            // at the old 320 a three-material stake clipped mid-word.
+            const float panelW = 400f, panelH = 444f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
             GUI.Box(panel, GUIContent.none);
             GUI.Label(new Rect(panel.x, panel.y + 10, panel.width, 30), "Paused", new GUIStyle(_title) { alignment = TextAnchor.MiddleCenter });
@@ -782,6 +787,23 @@ namespace Game.Battle
             GUI.enabled = true;
             by += 40;
 
+            // Quit Battle (M21, moved here from the action row). The label carries the
+            // stake rather than hiding it -- that this is free early and expensive late
+            // IS the mechanic, and a bare "Quit Battle" would give the player no way to
+            // tell which situation they're in. Disabled once the battle is already over.
+            GUI.enabled = _ctrl.Outcome == BattleOutcome.InProgress;
+            string quitLabel = _ctrl.PendingRewards.IsEmpty
+                ? "Quit Battle -- nothing to lose"
+                : $"Quit Battle -- lose {_ctrl.PendingRewards.Describe()}";
+            if (GUI.Button(new Rect(bx, by, bw, 34), quitLabel, _btn))
+            {
+                GUI.enabled = true;
+                _ctrl.QuitBattle();
+                return; // outcome changed under us -- stop drawing the paused menu
+            }
+            GUI.enabled = true;
+            by += 40;
+
             if (GUI.Button(new Rect(bx, by, bw, 34), "Restart Whole Battle", _btn))
             {
                 if (_ctrl.Outcome == BattleOutcome.InProgress) _confirmRestart = true;
@@ -789,7 +811,10 @@ namespace Game.Battle
             }
             by += 40;
 
-            if (GUI.Button(new Rect(bx, by, bw, 34), "Quit", _btn)) Application.Quit();
+            // Renamed from "Quit" (M21): with Quit Battle sitting two rows above it,
+            // two buttons both called Quit that do wildly different things -- abandon a
+            // fight vs. close the application -- is a trap, not a menu.
+            if (GUI.Button(new Rect(bx, by, bw, 34), "Exit Game", _btn)) Application.Quit();
         }
 
         /// <summary>Compact multi-line stat readout shared by DrawUnitStatsPanel (one
