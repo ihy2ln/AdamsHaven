@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Game.Data;
 
 namespace Game.Battle
@@ -204,9 +205,9 @@ namespace Game.Battle
 
         /// <summary>Tears the battle down and stands up the camp screen in its place
         /// (M20; shows the dungeon map since M24). Same scene, different contents --
-        /// BootMap already worked this way, so camp doesn't need a scene of its own (and
-        /// Battle.unity isn't in the build settings, so a second scene would need
-        /// wiring that doesn't exist yet).</summary>
+        /// BootMap already worked this way, so camp doesn't need a scene of its own for
+        /// anything except its one exit ("Leave dungeon", which does cross into
+        /// Farm.unity -- see OnLeaveDungeonRequested below).</summary>
         public void BootCamp(BattleWorld world, BattleOutcome outcome)
         {
             // Three arrival lines, one per way of reaching camp (M20 escape/quit, M23
@@ -238,13 +239,14 @@ namespace Game.Battle
             camp.OnNodeChosen += node => EnterNode(node, party, bench, inventory, rewards);
             camp.OnLeaveDungeonRequested += () =>
             {
-                // No home scene is wired to the battle slice yet -- Farm.unity exists and
-                // is the only scene in the build settings, but nothing connects the two
-                // (see PROJECT-README's "Known gaps"). Until that boundary is built,
-                // going home means a fresh dungeon run, via Boot() -- same placeholder
-                // this button had before M24, just now also regenerating the map.
-                Debug.Log("[AI.Game] Left the dungeon -- no home scene wired yet, starting a fresh run.");
-                Boot();
+                // Farm.unity is home now (first cut of the battle<->farm boundary --
+                // one-directional for now, camp to farm only; Farm.unity is on its own
+                // FarmBootstrap that boots itself the same way this one does, so there's
+                // nothing else to wire on this side). Both scenes need to be in Build
+                // Settings for LoadScene-by-name to resolve, including inside Play mode --
+                // see EditorBuildSettings.asset and BuildBattleStandalone.cs.
+                Debug.Log("[Adams Haven] Left the dungeon -- heading home to the farm.");
+                SceneManager.LoadScene("Farm");
             };
 
             Debug.Log($"[AI.Game] Camp booted -- {_run.AvailableNextNodes().Count} node(s) available next. \"{arrival}\"");

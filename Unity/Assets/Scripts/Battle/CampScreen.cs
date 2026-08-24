@@ -49,9 +49,9 @@ namespace Game.Battle
         /// is the only listener; it owns turning a node into an actual boot call.</summary>
         public event Action<RunMapNode> OnNodeChosen;
 
-        /// <summary>Raised by "Leave dungeon". No home scene is wired to the battle slice
-        /// yet (Farm.unity exists but nothing connects the two -- see PROJECT-README's
-        /// gaps), so BattleBootstrap currently treats this as starting a fresh run.</summary>
+        /// <summary>Raised by "Leave dungeon" -- BattleBootstrap's listener loads
+        /// Farm.unity (first cut of the battle&lt;-&gt;farm boundary, one-directional for
+        /// now: camp to farm only).</summary>
         public event Action OnLeaveDungeonRequested;
 
         GUIStyle _title, _body, _btn, _heading, _nodeBtn;

@@ -26,7 +26,10 @@ namespace Game.EditorTools
 
             var options = new BuildPlayerOptions
             {
-                scenes = new[] { "Assets/Scenes/Battle.unity" },
+                // Farm.unity rides along so Camp's "Leave dungeon" transition (loads Farm
+                // by scene name) actually has a scene to find in a real standalone build,
+                // not just inside the Editor's own Build Settings list.
+                scenes = new[] { "Assets/Scenes/Battle.unity", "Assets/Scenes/Farm.unity" },
                 locationPathName = "S:/AI/Game/play/windows/AI.Game-Battle.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None,

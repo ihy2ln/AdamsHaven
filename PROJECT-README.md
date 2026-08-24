@@ -1174,6 +1174,37 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       that case; there's no way to fully close a TOCTOU race like this when sharing a
       live machine with another active agent, and the script already surfaces the real
       error clearly rather than hiding it.
+27. **First cut of the battle-to-farm transition -- M29.** Project-owner request, once
+    the MCP/CLI tooling above landed: "merge the battle scene and farm scene, then work
+    on a transition from the battle scene to the farm using the camp for now." Farm.unity
+    already boots itself exactly like Battle.unity does (`FarmBootstrap.Boot()`, no
+    Inspector wiring) -- see [[Battle-System]] and its Farm counterpart -- so this needed
+    no changes on the Farm side at all, kept deliberately untouched since it's ChatGPT's
+    active, uncommitted work this session. Three small changes, all on the Battle side:
+    - **`Battle.unity` added to `EditorBuildSettings.asset`**, alongside the pre-existing
+      `Farm.unity` entry. `SceneManager.LoadScene(string)` requires its target scene to
+      be in the Build Settings list to resolve by name -- true even inside the Editor's
+      own Play mode, not just a real player build -- and until now only Farm.unity was
+      ever added (from whenever Farm was last the only scene that mattered).
+    - **`BuildBattleStandalone.Build()`'s scene list gained `Farm.unity`** alongside
+      `Battle.unity`, so a real Windows standalone build (not just Play mode) also ships
+      with a scene for the transition to land on.
+    - **`CampScreen`'s "Leave dungeon (go home)" button now actually goes home.**
+      `BattleBootstrap.ShowCamp`'s `OnLeaveDungeonRequested` handler previously just
+      called `Boot()` again (a fresh dungeon run -- the only thing possible before Farm
+      was reachable, per M20's own doc comment on the button). Replaced with
+      `SceneManager.LoadScene("Farm")`. One-directional for now, matching the ask ("for
+      now") -- there's no way back to Battle from Farm yet, since building that means
+      touching Farm-side code mid-refactor, deliberately deferred.
+    - **Not yet verified by actual play** -- `Tools/unity.sh typecheck` passes clean, but
+      confirming the scene actually loads and Farm boots correctly on arrival needs an
+      interactive Play-mode session, which wasn't taken over this session (the Editor was
+      live with Farm's own scene open at the time -- see "Known gaps" on why blind GUI
+      automation on a shared session was avoided). Also unverified: whether `Boot()`'s own
+      earlier-in-the-list content (bench roster, inventory, etc.) needs any hand-off to
+      Farm, or whether arriving at Farm with a completely fresh `FarmWorld` every time is
+      the intended behavior for this first cut -- reads as intentional for "for now," but
+      worth confirming.
 
 ## Roster
 
@@ -1255,6 +1286,7 @@ costs the turn.
 | M26 | Boss content -- the run's final node scales its existing roster's stats (`BossStatMultiplier`), no new content | *(not yet tagged)* |
 | M27 | Curated 5-node test dungeon (`GenerateCuratedTestRun`) replaces the randomized graph in `Boot()`: map1 fight, map2 fight, rest, treasure, boss | *(not yet tagged)* |
 | M28 | MCP server (`com.coplaydev.unity-mcp`) + `Tools/unity.sh` CLI -- project-wide tooling, not a battle-scene feature | *(not yet tagged)* |
+| M29 | First cut of the battle-to-farm transition: Camp's "Leave dungeon" loads Farm.unity, both scenes in Build Settings, one-directional for now | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
