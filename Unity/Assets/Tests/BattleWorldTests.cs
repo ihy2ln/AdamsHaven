@@ -4,6 +4,7 @@ using NUnit.Framework;
 using Game.Data;
 using Game.Battle;
 using UnityEngine;
+using UnityEngine.TestTools;
 using static Game.Tests.BattleTestHelpers;
 
 namespace Game.Tests
@@ -69,6 +70,17 @@ namespace Game.Tests
             var party = MakeParty();
             party[1].ApplyDamage(DummyStats.hp);      // the middle unit dies
             party[2].ApplyDamage(40);                 // the front unit is wounded
+
+            // BattleTestHelpers.MakeUnit builds a bare CharacterDefinition with no
+            // skillMoves -- fine for every other test in this suite, which never
+            // constructs a real BattleWorld around one, but BattleWorld's own
+            // WarnOnStaleContent logs an Error the moment it sees a unit like that
+            // (the exact check that catches M10's "content authored in C#, never
+            // written to disk" class of bug in real play). Expected and harmless here:
+            // this fixture was never meant to carry real Skill Move content, only HP
+            // and column. Without this, Unity's test runner fails the test on the
+            // unhandled log rather than on any real assertion.
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("have no Skill Moves"));
 
             var world = new BattleWorld(mapIndex: 1, carryOverPlayer: party,
                 carryOverBench: new List<BattleUnit>(), carryOverInventory: null);
