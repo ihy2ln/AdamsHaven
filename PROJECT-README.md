@@ -120,6 +120,15 @@ odds in the label, and an `F` key), and **Quit moved into the pause menu** (with
 it would cost in the label). The six buttons left in the row are all combat actions aimed
 at the field; the two that left were the ones about leaving it. See item 19 below.
 
+M22 (this session) reworks Rest after direct project-owner feedback: it's **per-unit**
+now, not a flat whole-party purchase. 1 material heals one unit to full HP/MP and clears
+its status effects; camp's Rest button opens a checklist so you can spend on exactly who
+needs it, including affording only some of the party when materials are short. Also:
+per the project owner's explicit direction, **EXP is a placeholder with nowhere to spend
+it yet** (no farm/town/class progression exists) and the M20 numbers generally are not
+final -- expect them to keep moving as the surrounding systems get built. See item 20
+below.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -810,6 +819,34 @@ at the field; the two that left were the ones about leaving it. See item 19 belo
     - **The pause menu's old "Quit" is now "Exit Game".** Two buttons both called Quit,
       three rows apart, one abandoning a fight and one closing the application, is a trap
       rather than a menu.
+20. **Per-unit Rest -- M22.** Direct project-owner correction to M20's flat 3-material
+    whole-party Rest: "resting should cost 1 per member... you have to choose who to use
+    rest mats on." Implemented as written, not reinterpreted.
+    - **`RestMaterialCostPerUnit = 1`** (was `RestMaterialCost = 3` for the whole party).
+      Camp's Rest button now opens a checklist (`CampScreen.DrawRestPanel`) of every
+      party+bench member who needs it -- HP/MP short of max, or carrying any status
+      effect -- each with a toggle. Selecting N members costs N materials, spent across
+      whichever material kinds are banked (still no reason to treat one kind as more
+      valuable than another -- see item 17's note on the placeholder economy).
+    - **The point of the change**: a haul too small to rest the whole party is no longer
+      wasted. Under the old flat cost, 2 materials bought nothing; now they rest one
+      member, or two if neither needs MP topped up along with HP. This is what
+      "you have to choose" means in practice -- the game asks who matters most to spend
+      on, rather than gating the feature behind an all-or-nothing price.
+    - **Rest still fully restores whoever is selected** (full HP, full MP, status
+      cleared) -- M22 changed who you can afford to rest, not what resting does to them.
+    - **EXP does not matter yet, by explicit direction, and the M20 numbers aren't
+      final.** The project owner's own words: "at this time exp doesn't matter cause we
+      don't have the farm, town, or classes progression to build upon. the numbers can
+      and will change from time to time as we progress." No code change follows from
+      this (there was nothing to build against yet), but it means the EXP-derivation
+      formula, the material-kind assignments, and the rest cost should all be read as
+      placeholders in active flux, not as a balance pass anyone should defend. Revisit
+      when leveling or an economy exists to spend EXP/materials against.
+    - **Equipment is explicitly deferred past the whole battle scene**, per the project
+      owner: "equipment change is a future issue after we make sure that the battle
+      scene is finished... during the farm/town scene" where crafting will live. Not
+      started, not next -- named here so a future session doesn't reopen the question.
 
 ## Roster
 
@@ -884,6 +921,7 @@ costs the turn.
 | M19 | Escape/flee -- speed-based chance with per-failure escalation, `Escaped` outcome, `forbidEscape` map hook | *(not yet tagged)* |
 | M20 | Escape/quit economy (EXP + materials, entry-stat restore), camp screen, `Tools/typecheck.sh` | *(not yet tagged)* |
 | M21 | Action-row declutter -- Flee under Pause (+`F` key), Quit into the pause menu and now immediate | *(not yet tagged)* |
+| M22 | Per-unit Rest (1 material/member, choose who) replacing M20's flat whole-party cost | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
@@ -970,11 +1008,18 @@ bench, Item's potion slots). U resolves immediately with no target pick. The row
   Game.Data/Game.Battle/Game.Tests. But **type-checking is not testing.** ~113 tests
   including 11 new ones have never executed, and nothing in M19 or M20 has been played.
   One `-runTests` pass once Unity is closed is the outstanding gate.
-- **M20's materials are a parallel model to the one the project already has.** See item
+- **M20/M22's materials are a parallel model to the one the project already has,
+  and by the project owner's own direction none of these numbers are meant to be final
+  yet** (EXP has nowhere to spend it until farm/town/class progression exists; rest cost,
+  material kinds, and drop amounts should all be expected to move). Don't treat any of
+  them as a tuning target -- the open question is the systems to hang them on, not the
+  numbers themselves. See item
   17 -- `MaterialDefinition`/`DropTable` exist in `Game.Data`, fully designed, unwired.
   `BattleRewards` should be *replaced* by them rather than grown, and `Award()` is the
   single seam where that swap happens. Flagged loudly because a placeholder economy that
   quietly becomes the real one is how projects end up with two of everything.
+  Equipment is explicitly out of scope until the farm/town scene exists for crafting to
+  live in -- see item 20.
 - **Camp's "Leave dungeon" has nowhere to go.** `Farm.unity` exists and is the only
   scene in the build settings, but nothing connects the battle slice to it, so leaving
   restarts the run and logs why. That connection is the farm/battle boundary the

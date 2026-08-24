@@ -23,10 +23,13 @@ namespace Game.Battle
     /// </summary>
     public class CampScreen : MonoBehaviour
     {
-        /// <summary>Materials a full rest costs. Flat, and deliberately payable from a
-        /// single successful escape's haul -- resting has to be reachable, or the
-        /// escape-with-your-mats decision has nothing to buy. Not a tuned number.</summary>
-        public const int RestMaterialCost = 3;
+        /// <summary>Materials one unit's rest costs (M22 -- per-unit, was a flat
+        /// whole-party cost in M20). Deliberately payable from a single successful
+        /// escape's haul -- resting has to be reachable, or the escape-with-your-mats
+        /// decision has nothing to buy. Not a tuned number; the project owner's own
+        /// direction is that none of M20's numbers are final until the farm/town economy
+        /// exists to weigh them against.</summary>
+        public const int RestMaterialCostPerUnit = 1;
 
         BattleRewards _banked;
         List<BattleUnit> _party;
@@ -36,6 +39,8 @@ namespace Game.Battle
         string _arrivalLine;
 
         bool _showStats;
+        bool _showRest;
+        readonly HashSet<BattleUnit> _restSelection = new();
         string _notice;
 
         /// <summary>Raised when the player chooses to take on the next battle. Carries
@@ -79,6 +84,7 @@ namespace Game.Battle
             GUI.color = Color.white;
 
             if (_showStats) { DrawStatsPanel(w, h); return; }
+            if (_showRest) { DrawRestPanel(w, h); return; }
 
             const float panelW = 460f, panelH = 470f;
             var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
@@ -118,9 +124,9 @@ namespace Game.Battle
             }
             y += 24f;
 
-            bool canRest = CanRest(out string restLabel);
+            bool canRest = CanOpenRest(out string restLabel);
             GUI.enabled = canRest;
-            if (GUI.Button(new Rect(x, y, cw, 34), restLabel, _btn)) Rest();
+            if (GUI.Button(new Rect(x, y, cw, 34), restLabel, _btn)) OpenRest();
             GUI.enabled = true;
             y += 40f;
 
@@ -175,12 +181,13 @@ namespace Game.Battle
 
         string NextBattleButtonLabel() => $"Take on battle {_mapIndex + 1}";
 
-        /// <summary>Rest is available when someone actually needs it and the party can
-        /// pay. Both halves matter for the message: "you can't afford it" and "nobody is
-        /// hurt" are different answers and the button says which.</summary>
-        bool CanRest(out string label)
+        /// <summary>Whether the Rest panel is even worth opening -- someone has to be
+        /// hurt, and there has to be at least one material banked to spend on them.
+        /// Doesn't check that the player can afford *everyone* -- resting is per-unit
+        /// now (M22), so 1 material is enough to open it and rest just one.</summary>
+        bool CanOpenRest(out string label)
         {
-            bool anyHurt = _party.Concat(_bench).Any(u => u.CurrentHp < u.Stats.hp || u.CurrentMp < u.MaxMp);
+            bool anyHurt = _party.Concat(_bench).Any(NeedsRest);
             int mats = _banked.TotalMaterials;
 
             if (!anyHurt)
@@ -188,22 +195,98 @@ namespace Game.Battle
                 label = "Rest -- everyone is already fit";
                 return false;
             }
-            if (mats < RestMaterialCost)
+            if (mats <= 0)
             {
-                label = $"Rest ({RestMaterialCost} materials -- you have {mats})";
+                label = "Rest -- you have no materials to spend";
                 return false;
             }
-            label = $"Rest -- spend {RestMaterialCost} materials, heal the party";
+            label = $"Rest... ({mats} material{(mats == 1 ? "" : "s")} banked)";
             return true;
         }
 
-        /// <summary>Full HP/MP for everyone, active and bench, paid for in materials.
-        /// Spends across the kinds in order rather than requiring a particular one --
-        /// there's no crafting system to make one kind meaningfully different yet, so
-        /// pretending they aren't interchangeable would be fiction.</summary>
-        void Rest()
+        static bool NeedsRest(BattleUnit u) => u.CurrentHp < u.Stats.hp || u.CurrentMp < u.MaxMp
+            || u.StatusEffects.Count > 0;
+
+        void OpenRest()
         {
-            int owed = RestMaterialCost;
+            _restSelection.Clear();
+            _showRest = true;
+        }
+
+        /// <summary>Per-unit rest (M22): 1 material heals one unit to full HP/MP and
+        /// clears its status effects. Replaces M20's flat whole-party cost -- the project
+        /// owner's spec is that resting with fewer materials than the party needs should
+        /// still be possible, just on whoever you pick, rather than an all-or-nothing
+        /// purchase. The camp's own materials list is the wallet; there's no crafting
+        /// system yet to make one kind meaningfully different from another, so spending
+        /// draws from whichever kinds are available rather than requiring a specific one.</summary>
+        void DrawRestPanel(int w, int h)
+        {
+            var candidates = _party.Concat(_bench).ToList();
+            const float panelW = 480f;
+            float panelH = Mathf.Min(h - 60f, 140f + candidates.Count * 30f);
+            var panel = new Rect(w / 2f - panelW / 2f, h / 2f - panelH / 2f, panelW, panelH);
+            GUI.Box(panel, GUIContent.none);
+
+            float x = panel.x + 16f, cw = panel.width - 32f, y = panel.y + 12f;
+            GUI.Label(new Rect(x, y, cw, 28), "Rest", _title);
+            y += 30f;
+            GUI.Label(new Rect(x, y, cw, 18),
+                $"{RestMaterialCostPerUnit} material per member -- choose who to spend it on.", _body);
+            y += 24f;
+
+            foreach (var unit in candidates)
+            {
+                bool needs = NeedsRest(unit);
+                bool selected = _restSelection.Contains(unit);
+                string status = needs
+                    ? $"HP {unit.CurrentHp}/{unit.Stats.hp}  MP {unit.CurrentMp}/{unit.MaxMp}"
+                        + (unit.StatusEffects.Count > 0 ? $"  ({unit.StatusEffects.Count} status)" : "")
+                    : "already fit";
+
+                GUI.enabled = needs;
+                bool now = GUI.Toggle(new Rect(x, y, cw, 24), selected,
+                    $"  {unit.Definition.displayName} -- {status}");
+                GUI.enabled = true;
+
+                if (needs && now != selected)
+                {
+                    if (now) _restSelection.Add(unit); else _restSelection.Remove(unit);
+                }
+                y += 26f;
+            }
+
+            y += 6f;
+            int cost = _restSelection.Count;
+            int available = _banked.TotalMaterials;
+            GUI.Label(new Rect(x, y, cw, 18),
+                cost == 0 ? "Select who to rest." : $"Cost: {cost} material{(cost == 1 ? "" : "s")} (you have {available}).",
+                _body);
+            y += 24f;
+
+            bool canAfford = cost > 0 && cost <= available;
+            GUI.enabled = canAfford;
+            if (GUI.Button(new Rect(x, y, cw, 32), canAfford ? $"Rest {cost} member{(cost == 1 ? "" : "s")}" : "Rest", _btn))
+                ConfirmRest();
+            GUI.enabled = true;
+            y += 38f;
+
+            if (GUI.Button(new Rect(x, y, cw, 30), "Back", _btn))
+            {
+                _restSelection.Clear();
+                _showRest = false;
+            }
+        }
+
+        /// <summary>Spends 1 material per selected unit and restores exactly those
+        /// units. Draws materials across kinds in order rather than requiring a specific
+        /// one -- see the class doc on why BattleRewards treats its three kinds as
+        /// interchangeable for now.</summary>
+        void ConfirmRest()
+        {
+            int owed = _restSelection.Count;
+            if (owed <= 0 || owed > _banked.TotalMaterials) return;
+
             foreach (var (kind, count) in _banked.Materials.ToList())
             {
                 if (owed <= 0) break;
@@ -212,14 +295,18 @@ namespace Game.Battle
                 owed -= take;
             }
 
-            foreach (var unit in _party.Concat(_bench))
+            var rested = _restSelection.ToList();
+            foreach (var unit in rested)
             {
                 unit.CurrentHp = unit.Stats.hp;
                 unit.CurrentMp = unit.MaxMp;
                 unit.StatusEffects.Clear();
             }
 
-            _notice = $"Rested. The party is at full strength. ({RestMaterialCost} materials spent)";
+            _notice = $"Rested {rested.Count} member{(rested.Count == 1 ? "" : "s")} "
+                + $"({rested.Count} material{(rested.Count == 1 ? "" : "s")} spent).";
+            _restSelection.Clear();
+            _showRest = false;
         }
 
         void DrawStatsPanel(int w, int h)
