@@ -132,10 +132,17 @@ namespace Game.Farm
             plate.name = "StagePlate";
             plate.transform.SetParent(transform, false);
             plate.transform.position = MapCenter + new Vector3(0f, -0.32f, 0f);
-            var plateSize = Mathf.Max(_world.Width, _world.Height) * FarmIso.TileSize * 1.65f;
+            var fieldSize = FarmIso.FieldWorldSize(_world.Width, _world.Height);
+            var plateSize = new Vector3(fieldSize.x / FarmIso.ArtDirtCoverage,
+                0.08f, fieldSize.y / FarmIso.ArtDirtCoverage);
             var layoutTexture = _matPlotBackground.mainTexture as Texture2D;
             var layoutAspect = layoutTexture == null ? 1f : (float)layoutTexture.width / layoutTexture.height;
-            plate.transform.localScale = new Vector3(plateSize * layoutAspect, 0.08f, plateSize);
+            // Preserve the authored image aspect while keeping its dirt region
+            // aligned to the full logical field. The current asset is square;
+            // this branch keeps future rectangular layouts predictable.
+            if (layoutAspect > 1f) plateSize.z = plateSize.x / layoutAspect;
+            else if (layoutAspect < 1f) plateSize.x = plateSize.z * layoutAspect;
+            plate.transform.localScale = plateSize;
             plate.GetComponent<Renderer>().sharedMaterial = _matPlotBackground;
             Object.Destroy(plate.GetComponent<Collider>());
         }
@@ -486,7 +493,7 @@ namespace Game.Farm
         }
 
         public Vector3 MapCenter =>
-            FarmIso.GridToWorld((_world.Width - 1) * 0.5f, (_world.Height - 1) * 0.5f, 0f)
+            FarmIso.FieldWorldCenter(_world.Width, _world.Height, 0f)
             + new Vector3(0f, 0.2f, 0f);
     }
 

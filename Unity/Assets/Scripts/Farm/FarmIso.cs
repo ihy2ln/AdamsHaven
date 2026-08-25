@@ -7,6 +7,21 @@ namespace Game.Farm
     {
         public const float TileSize = 1.4f;
         public const float TileHeight = 0.12f;
+        // The authored clearing image includes a forest border. This is the
+        // fraction of that image occupied by the usable dirt field; keeping it
+        // here makes the art plate and logical grid share one contract.
+        public const float ArtDirtCoverage = 0.80f;
+
+        public static Vector2 FieldWorldSize(int width, int height)
+        {
+            return new Vector2(width * TileSize, height * TileSize);
+        }
+
+        public static Vector3 FieldWorldCenter(int width, int height, float yOffset = 0f)
+        {
+            return new Vector3((width - 1) * 0.5f * TileSize, yOffset,
+                (height - 1) * 0.5f * TileSize);
+        }
 
         public static Vector3 GridToWorld(float x, float y, float yOffset = 0f)
         {

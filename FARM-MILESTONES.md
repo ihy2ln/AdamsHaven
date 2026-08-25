@@ -14,7 +14,8 @@ its tests/docs are updated.
 | F2 | Complete first crop loop | Done | F1 |
 | F3 | Farm progression, obstacles, and local save | Done | F2 |
 | F4 | Farm presentation and authored flora pass | In progress | F1 |
-| F5 | Real battle-completion growth bridge | Next | F3 |
+| F4.1 | Grid and ground foundation lock | In progress | F4 |
+| F5 | Real battle-completion growth bridge | Next | F3, F4.1 |
 | F6 | Market and Kitchen handoff loop | Planned | F3, F5 |
 | F7 | Authored crop/content catalog | Planned | F2, F6 |
 | F8 | Farm rules decision pass | Planned | F3, F7 |
@@ -66,6 +67,19 @@ provided flora sheets are separated into reusable transparent sprites.
 **Exit gate:** the field reads as one continuous clearing, no opaque placeholder
 grid squares remain, and representative separated flora sprites appear in the
 farm scene at a useful scale.
+
+### F4.1 — Grid and ground foundation lock — In progress
+
+Lock one coordinate contract between the authored clearing image and the
+interactive farm. The playable field bounds, map plate, tile colliders, soil
+overlays, hover marker, and player placement must all derive from the same
+16×16 world-space field instead of independent visual multipliers. This is a
+foundation correction inside F4, not a new crop or battle feature.
+
+**Exit gate:** the four corner cells and center cell align with the authored dirt
+field; a tilled overlay fills exactly one interaction cell; pointer targeting,
+keyboard movement, hover, and save/reload agree on the same cell coordinates;
+the Farm scene has no visible tan/grey placeholder squares.
 
 ### F5 — Real battle bridge — Next
 
