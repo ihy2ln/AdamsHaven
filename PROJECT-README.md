@@ -1532,6 +1532,31 @@ actually land in `Resources/Battle` and be played.
       built. Left entirely alone; typecheck.sh reported clean project-wide by the time
       this was committed, but Town's own correctness wasn't gated on that -- same
       isolated-compile approach as M36.
+34. **Walk-cycle model replaces the flat capsule, and a real animation bug fixed by
+    actually testing it -- M39.** Someone else's concurrent work landed a
+    `TownPlayerWalkVisual` billboard (AssetForge-generated walk frames, chroma-keyed,
+    `Resources/Town/Art/PlayerWalk/`) replacing the solid-colour player capsule -- not
+    this session's own addition, found already wired into `TownBootstrap.Boot()`. The
+    project owner asked for it to actually be tested in the Editor, so this session
+    launched Unity interactively (`-projectPath`, no batchmode -- the only way to
+    actually see Play mode run), opened Town.unity, entered Play, and drove movement via
+    real keyboard/mouse input (Win32 `keybd_event`/`mouse_event` through PowerShell,
+    same technique as M28's screenshot verification), screenshotting the Game view
+    across several frames of held-W movement.
+    - **Found a real bug this way, not by reading code**: the character visibly moved
+      (position shifted, the follow-camera tracked it) but the sprite's pose was
+      pixel-identical across every captured frame -- the walk animation itself wasn't
+      cycling. Root cause: `TownPlayerWalkVisual.Update()` gated animation on
+      `CharacterController.velocity.sqrMagnitude`, but `TownController` moves the player
+      via `SimpleMove()`, and `.velocity` wasn't reflecting that movement in this setup.
+    - **Fixed by tracking the player's own transform position frame-to-frame** instead
+      of trusting `CharacterController.velocity` -- immune to whichever Move/SimpleMove
+      quirk caused the original miss. Re-tested the same way (fresh Play session, same
+      screenshot-during-movement method): confirmed the sprite now visibly cycles
+      through distinct stepping poses (legs together -> spread stride -> together) as
+      the player walks, not just translating a static image.
+    - Only `TownPlayerWalkVisual.cs` touched; the frames/material/billboard setup and
+      everything else about that concurrent addition left exactly as found.
 
 ## Roster
 
@@ -1620,6 +1645,7 @@ costs the turn.
 | M35-M36 | Default camera yaw; town direction confirmed as build-from-empty-dirt (FOUNDATION.md 5.5) -- building blockout replaced by walkable, collider-free plots at the same four-district layout | *(not yet tagged)* |
 | M37 | Ground image swapped for a genuinely empty crossroads-through-forest reference (no buildings painted in), matching M36's direction | *(not yet tagged)* |
 | M38 | Real building rules: 4 sectors (Commercial/Housing/Industrial/Government), 10-building starting catalog, money+materials+time cost, Rush, a working Empty->UnderConstruction->Built loop | *(not yet tagged)* |
+| M39 | Walk-cycle player model tested live in the Editor; fixed a real animation bug (CharacterController.velocity not reflecting SimpleMove) found only by actually playing it | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That

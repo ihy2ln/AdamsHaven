@@ -15,13 +15,15 @@ namespace Game.Town
     {
         const string FramesResourceDir = "Town/Art/PlayerWalk";
         const float FramesPerSecond = 8f;
-        const float MovingThresholdSqr = 0.01f;
+        const float MovingSpeedThreshold = 0.1f; // units/sec
 
         Texture2D[] _frames;
         Material _mat;
         CharacterController _cc;
         float _clock;
         int _frame = -1;
+        Vector3 _lastPos;
+        bool _hasLastPos;
 
         /// <summary>Builds the quad, attaches this component + TownBillboard, and
         /// parents it under the player. Mirrors FarmVisuals.BuildPlayer's use of
@@ -60,7 +62,18 @@ namespace Game.Town
         void Update()
         {
             if (_frames == null || _frames.Length == 0 || _cc == null) return;
-            var moving = _cc.velocity.sqrMagnitude > MovingThresholdSqr;
+
+            // CharacterController.velocity doesn't reflect SimpleMove's actual
+            // horizontal displacement in this setup -- confirmed by direct testing
+            // (walked the player across the crossroads, camera followed, sprite never
+            // left frame 0). Tracking the player's own position delta instead is
+            // immune to whichever Move/SimpleMove quirk caused that.
+            var pos = _cc.transform.position;
+            var moving = _hasLastPos && Time.deltaTime > 0f
+                && (pos - _lastPos).magnitude / Time.deltaTime > MovingSpeedThreshold;
+            _lastPos = pos;
+            _hasLastPos = true;
+
             if (!moving)
             {
                 _clock = 0f;
