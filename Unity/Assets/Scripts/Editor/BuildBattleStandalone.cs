@@ -26,13 +26,14 @@ namespace Game.EditorTools
         {
             BattleSceneBuilder.CreateBattleScene();
 
-            // Farm.unity and Town.unity ride along so the whole Battle <-> Town <-> Farm
-            // loop actually has scenes to find in a real standalone build, not just
-            // inside the Editor's own Build Settings list. Guarded by File.Exists rather
-            // than hardcoded, since Town.unity doesn't exist until
-            // AI.Game > Town > Create Starter Scene has been run once.
+            // All location scenes ride along so Camp / Pause travel works in a real
+            // standalone build, not just inside the Editor's Build Settings list.
             var scenes = new List<string> { "Assets/Scenes/Battle.unity" };
-            foreach (var optional in new[] { "Assets/Scenes/Farm.unity", "Assets/Scenes/Town.unity" })
+            foreach (var optional in new[]
+            {
+                "Assets/Scenes/Farm.unity", "Assets/Scenes/Town.unity",
+                "Assets/Scenes/Camp.unity", "Assets/Scenes/Home.unity"
+            })
                 if (File.Exists(optional)) scenes.Add(optional);
 
             var options = new BuildPlayerOptions

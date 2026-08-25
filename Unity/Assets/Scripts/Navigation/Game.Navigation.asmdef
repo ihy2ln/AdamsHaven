@@ -1,9 +1,7 @@
 {
-    "name": "Game.Town",
-    "rootNamespace": "",
-    "references": [
-        "Game.Navigation"
-    ],
+    "name": "Game.Navigation",
+    "rootNamespace": "Game.Navigation",
+    "references": [],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

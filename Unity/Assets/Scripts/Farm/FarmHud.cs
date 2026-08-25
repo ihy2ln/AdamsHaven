@@ -47,7 +47,7 @@ namespace Game.Farm
             GUI.Label(new Rect(24, 88, 320, 20), $"Tool: {FarmController.FormatTool(_controller.SelectedTool)}  [1–5]", _body);
             GUI.Label(new Rect(24, 110, 320, 20), $"Seed: {_controller.SelectedCropName} ×{_controller.SelectedSeedCount}  [Q]", _body);
             GUI.Label(new Rect(24, 132, 320, 20), $"Fertilizer ×{_controller.FertilizerCount}  ·  Obstacles {world.RemainingObstacles()}", _small);
-            GUI.Label(new Rect(24, 150, 330, 20), "E tool  ·  P plant  ·  F fertilize  ·  R harvest  ·  B battle  ·  T test", _small);
+            GUI.Label(new Rect(24, 150, 330, 20), "E tool  ·  P plant  ·  F fertilize  ·  R harvest  ·  B battle  ·  TAB travel", _small);
 
             if (GUI.Button(new Rect(12, 188, 170, 28), "ENTER BATTLE", _button)) _controller.EnterBattle();
 

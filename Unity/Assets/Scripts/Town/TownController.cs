@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Game.Navigation;
 
 namespace Game.Town
 {
@@ -33,6 +34,7 @@ namespace Game.Town
 
         void Update()
         {
+            if (HavenNavigation.IsOpen) return;
             var h = Input.GetAxisRaw("Horizontal");
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h = -1f;
             if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h = 1f;
