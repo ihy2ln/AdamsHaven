@@ -4,8 +4,12 @@ using UnityEngine;
 namespace Game.Town
 {
     /// <summary>Builds the Town plot at runtime. The project owner's reference image
-    /// paints the ground directly (`Resources/Town/Art/town_reference_01.png`, loaded at
-    /// runtime) -- dirt roads in a cross pattern through forest. Matches §5.5: buildings
+    /// paints the ground directly (`Resources/Town/Art/town_ground_empty_01.png`,
+    /// loaded at runtime) -- dirt roads in a cross pattern through forest, genuinely
+    /// empty this time (M37; the original `town_reference_01.png` still had M30/M31's
+    /// buildings painted in, which never matched the "starts empty" direction -- kept
+    /// on disk, unused, in case a with-buildings reference is wanted again later).
+    /// Matches §5.5: buildings
     /// cost materials and a real-time build countdown, so the town legitimately starts
     /// with nothing actually built, rather than a hardcoded blockout standing in for
     /// real construction. M36 adds back what M30/M31's removed building blockout was
@@ -15,7 +19,7 @@ namespace Game.Town
     /// each reading "not built yet" until a real building-placement system exists.</summary>
     public static class TownVisuals
     {
-        const string ReferenceImageResourcePath = "Town/Art/town_reference_01";
+        const string ReferenceImageResourcePath = "Town/Art/town_ground_empty_01";
         const float RoadHalfWidth = 2.5f;
         const float RoadReach = 42f;
         const float ForestRadius = 46f;

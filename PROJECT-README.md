@@ -1460,6 +1460,18 @@ actually land in `Resources/Battle` and be played.
       in-progress file. Matches this project's own documented pattern (see M24's
       "Resolved mid-session" gap) of a mid-session Farm refactor briefly breaking the
       whole project's compile -- not this session's work, not fixed by it.
+32. **A genuinely empty ground image -- M37.** `town_reference_01.png` (M33) still had
+    M30/M31's buildings painted into it, which never actually matched "the town starts
+    empty" (M36) once that became the real direction -- cosmetically wrong even though
+    nothing depended on the mismatch. The project owner generated and supplied a real
+    empty-plot reference (same crossroads-through-forest composition, no buildings, just
+    dirt roads/stumps/rocks) via the same source-hunting process as M33 -- found it in
+    the ComfyUI output tree by timestamp after being given the exact path this time.
+    Copied to `Resources/Town/Art/town_ground_empty_01.png` (hand-written `.meta`, same
+    Default-texture-type convention as every other Town image), and
+    `TownVisuals.ReferenceImageResourcePath` repointed at it. `town_reference_01.png`
+    stays on disk unused, same as the M34 roof crops -- both are real assets that might
+    still be wanted once buildings are actually placed rather than deleted speculatively.
 
 ## Roster
 
@@ -1546,6 +1558,7 @@ costs the turn.
 | M33 | Reference image applied as a ground-plane texture (real "nicer graphics" pass); M30-M32's hub-topology assumption corrected -- Town/Home/Battle/Farm are each their own scene, not Town-as-center | *(not yet tagged)* |
 | M34 | Player-rotatable orbit camera (Q/R) with camera-relative movement; per-building roof-crop textures on raised planes (bas-relief, not full 3D) | *(not yet tagged)* |
 | M35-M36 | Default camera yaw; town direction confirmed as build-from-empty-dirt (FOUNDATION.md 5.5) -- building blockout replaced by walkable, collider-free plots at the same four-district layout | *(not yet tagged)* |
+| M37 | Ground image swapped for a genuinely empty crossroads-through-forest reference (no buildings painted in), matching M36's direction | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
