@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Game.Farm
 {
     /// <summary>
-    /// Top-down anime × HD pixel visuals for the authored 16×16 clearing farm.
+    /// Top-down anime × HD pixel visuals for the authored 10×10 clearing farm.
     /// Point-filtered textures, crop stages, watered soil, and a chibi farmer.
     /// </summary>
     public class FarmVisuals : MonoBehaviour
@@ -25,6 +25,7 @@ namespace Game.Farm
         GameObject _hover;
         Transform _obstacleRoot;
         Transform _cropRoot;
+        FarmPlayerWalkVisual _playerWalkVisual;
 
         public void Build(FarmWorld world)
         {
@@ -75,7 +76,7 @@ namespace Game.Farm
             _matWateredTexture = FarmPixelArt.MakeTextureMat(
                 FarmPixelArt.LoadTexture("Farm/Art/background_ground_tilled_00002_"), new Color(0.28f, 0.20f, 0.18f));
             _matPlotBackground = FarmPixelArt.MakeTextureMat(
-                FarmPixelArt.LoadTexture("Farm/Art/farm-layout-clearing-03"), new Color(0.22f, 0.32f, 0.22f));
+                FarmPixelArt.LoadTexture("Farm/Art/farm-layout-clearing-04"), new Color(0.22f, 0.32f, 0.22f));
             _matCabbageSprite = FarmPixelArt.MakeKeyedSpriteMat(
                 FarmPixelArt.LoadTexture("Farm/Art/sprite_cabbage_00001_"), new Color(0.30f, 0.68f, 0.28f));
             _matRadishSprite = FarmPixelArt.MakeKeyedSpriteMat(
@@ -127,7 +128,7 @@ namespace Game.Farm
 
         void BuildGroundPlate()
         {
-            // Illustrated farm environment under the interactive 16×16 grid.
+            // Illustrated farm environment under the interactive 10×10 grid.
             var plate = GameObject.CreatePrimitive(PrimitiveType.Cube);
             plate.name = "StagePlate";
             plate.transform.SetParent(transform, false);
@@ -141,13 +142,13 @@ namespace Game.Farm
             plate.transform.localScale = plateSize;
             if (layoutTexture != null)
             {
-                // Sample the central dirt region of the authored clearing. The
-                // 10% inset on each side leaves a readable forest rim while
-                // aligning the reference grid to the 16×16 playable field.
-                var crop = FarmIso.ArtDirtCoverage;
-                _matPlotBackground.mainTextureScale = new Vector2(crop, crop);
-                _matPlotBackground.mainTextureOffset = new Vector2((1f - crop) * 0.5f,
-                    (1f - crop) * 0.5f);
+                // Sample the painted dirt rectangle rather than stretching the
+                // forest border across gameplay cells. Its UV window matches
+                // the 10x10 reference grid in the supplied portrait map.
+                _matPlotBackground.mainTextureScale = new Vector2(
+                    FarmIso.ArtDirtCoverageX, FarmIso.ArtDirtCoverageY);
+                _matPlotBackground.mainTextureOffset = new Vector2(
+                    FarmIso.ArtDirtOffsetX, FarmIso.ArtDirtOffsetY);
             }
             plate.GetComponent<Renderer>().sharedMaterial = _matPlotBackground;
             Object.Destroy(plate.GetComponent<Collider>());
@@ -226,24 +227,19 @@ namespace Game.Farm
             // Offsets sit inside the cell so the art does not form a rigid row.
             AddDecorativeFlora(root, 2, 0, _matFernSprite, 0.52f, new Vector3(-0.08f, 0f, -0.12f));
             AddDecorativeFlora(root, 5, 0, _matFlowerSprite, 0.46f, new Vector3(0.08f, 0f, -0.10f));
-            AddDecorativeFlora(root, 8, 0, _matCloverSprite, 0.44f, new Vector3(-0.03f, 0f, -0.08f));
-            AddDecorativeFlora(root, 11, 0, _matBushSprite, 0.54f, new Vector3(0.10f, 0f, -0.10f));
-            AddDecorativeFlora(root, 13, 1, _matFlowerSprite, 0.42f, new Vector3(0.10f, 0f, -0.03f));
-            AddDecorativeFlora(root, 15, 2, _matFernSprite, 0.50f, new Vector3(0.10f, 0f, -0.05f));
-            AddDecorativeFlora(root, 15, 5, _matCloverSprite, 0.46f, new Vector3(0.12f, 0f, 0.04f));
-            AddDecorativeFlora(root, 15, 8, _matWeedSprite, 0.42f, new Vector3(0.10f, 0f, 0.08f));
-            AddDecorativeFlora(root, 15, 11, _matBushSprite, 0.50f, new Vector3(0.10f, 0f, 0.03f));
-            AddDecorativeFlora(root, 14, 13, _matFlowerSprite, 0.44f, new Vector3(0.08f, 0f, 0.08f));
-            AddDecorativeFlora(root, 13, 15, _matFernSprite, 0.52f, new Vector3(0.06f, 0f, 0.10f));
-            AddDecorativeFlora(root, 10, 15, _matCloverSprite, 0.44f, new Vector3(-0.05f, 0f, 0.10f));
-            AddDecorativeFlora(root, 7, 15, _matFlowerSprite, 0.42f, new Vector3(0.04f, 0f, 0.11f));
-            AddDecorativeFlora(root, 2, 15, _matBushSprite, 0.52f, new Vector3(-0.08f, 0f, 0.10f));
-            AddDecorativeFlora(root, 0, 13, _matFernSprite, 0.50f, new Vector3(-0.10f, 0f, 0.06f));
-            AddDecorativeFlora(root, 0, 10, _matFlowerSprite, 0.44f, new Vector3(-0.10f, 0f, -0.04f));
-            AddDecorativeFlora(root, 0, 7, _matCloverSprite, 0.46f, new Vector3(-0.10f, 0f, 0.04f));
-            AddDecorativeFlora(root, 0, 3, _matWeedSprite, 0.42f, new Vector3(-0.10f, 0f, -0.04f));
+            AddDecorativeFlora(root, 7, 0, _matCloverSprite, 0.44f, new Vector3(-0.03f, 0f, -0.08f));
+            AddDecorativeFlora(root, 8, 1, _matBushSprite, 0.54f, new Vector3(0.10f, 0f, -0.10f));
+            AddDecorativeFlora(root, 9, 2, _matFernSprite, 0.50f, new Vector3(0.10f, 0f, -0.05f));
+            AddDecorativeFlora(root, 9, 5, _matCloverSprite, 0.46f, new Vector3(0.12f, 0f, 0.04f));
+            AddDecorativeFlora(root, 9, 7, _matWeedSprite, 0.42f, new Vector3(0.10f, 0f, 0.08f));
+            AddDecorativeFlora(root, 8, 9, _matFlowerSprite, 0.44f, new Vector3(0.08f, 0f, 0.08f));
+            AddDecorativeFlora(root, 6, 9, _matCloverSprite, 0.44f, new Vector3(-0.05f, 0f, 0.10f));
+            AddDecorativeFlora(root, 3, 9, _matBushSprite, 0.52f, new Vector3(-0.08f, 0f, 0.10f));
+            AddDecorativeFlora(root, 0, 7, _matFernSprite, 0.50f, new Vector3(-0.10f, 0f, 0.06f));
+            AddDecorativeFlora(root, 0, 4, _matFlowerSprite, 0.44f, new Vector3(-0.10f, 0f, -0.04f));
+            AddDecorativeFlora(root, 0, 2, _matCloverSprite, 0.46f, new Vector3(-0.10f, 0f, 0.04f));
             AddDecorativeFlora(root, 2, 2, _matFlowerSprite, 0.40f, new Vector3(-0.08f, 0f, -0.06f));
-            AddDecorativeFlora(root, 13, 4, _matCloverSprite, 0.42f, new Vector3(0.08f, 0f, 0.03f));
+            AddDecorativeFlora(root, 7, 4, _matCloverSprite, 0.42f, new Vector3(0.08f, 0f, 0.03f));
         }
 
         void AddDecorativeFlora(Transform parent, int x, int y, Material material, float scale, Vector3 cellOffset)
@@ -400,35 +396,10 @@ namespace Game.Farm
         {
             _playerView = new GameObject("Player");
             _playerView.transform.SetParent(transform, false);
-
-            // Body — chibi proportions
-            var body = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            body.transform.SetParent(_playerView.transform, false);
-            body.transform.localPosition = new Vector3(0f, 0.42f, 0f);
-            body.transform.localScale = new Vector3(0.38f, 0.45f, 0.28f);
-            body.GetComponent<Renderer>().sharedMaterial = _matCloth;
-            Object.Destroy(body.GetComponent<Collider>());
-
-            // Cape accent
-            var cape = GameObject.CreatePrimitive(PrimitiveType.Cube);
-            cape.transform.SetParent(_playerView.transform, false);
-            cape.transform.localPosition = new Vector3(0.05f, 0.45f, 0.16f);
-            cape.transform.localScale = new Vector3(0.3f, 0.4f, 0.06f);
-            cape.GetComponent<Renderer>().sharedMaterial =
-                FarmPixelArt.MakeFlatPixel(new Color(0.78f, 0.28f, 0.32f));
-            Object.Destroy(cape.GetComponent<Collider>());
-
-            // Anime face billboard
-            var face = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            face.name = "Face";
-            face.transform.SetParent(_playerView.transform, false);
-            face.transform.localPosition = new Vector3(0f, 0.92f, 0f);
-            face.transform.localScale = new Vector3(0.55f, 0.55f, 0.55f);
-            var faceMat = new Material(Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent"));
-            faceMat.mainTexture = FarmPixelArt.MakeChibiFace(32);
-            face.GetComponent<Renderer>().sharedMaterial = faceMat;
-            Object.Destroy(face.GetComponent<Collider>());
-            face.AddComponent<FarmBillboard>();
+            // Reuse Town's authored walking frames through a Farm-owned wrapper.
+            // The visual is presentation-only; Farm movement and collision remain
+            // owned by FarmController/FarmWorld and no Town assembly is referenced.
+            _playerWalkVisual = FarmPlayerWalkVisual.Create(_playerView.transform);
 
             SyncPlayer();
         }
@@ -448,7 +419,10 @@ namespace Game.Farm
         public void SyncPlayer()
         {
             if (_playerView == null || _world == null) return;
-            _playerView.transform.position = FarmIso.GridToWorld(_world.Player.X, _world.Player.Y, FarmIso.TileHeight);
+            var next = FarmIso.GridToWorld(_world.Player.X, _world.Player.Y, FarmIso.TileHeight);
+            var moved = _playerView.transform.position != next;
+            _playerView.transform.position = next;
+            if (moved) _playerWalkVisual?.PlayStep();
         }
 
         public void SetHover(Vector2Int? cell)

@@ -71,10 +71,10 @@ namespace Game.Farm
 
     public static class FarmStarterContent
     {
-        // The authored clearing plate is a 16×16 field. These are real gameplay
+        // The authored clearing plate is a 10×10 field. These are real gameplay
         // cells, not just a decorative overlay.
-        public const int Width = 16;
-        public const int Height = 16;
+        public const int Width = 10;
+        public const int Height = 10;
 
         public static FarmContentCatalog CreateCatalog()
         {
@@ -130,41 +130,34 @@ namespace Game.Farm
             var obstacles = new string[Height, Width];
             obstacles[0, 0] = "tree";
             obstacles[0, 1] = "weed";
-            obstacles[0, 3] = "rock";
-            obstacles[0, 14] = "tree";
-            obstacles[0, 15] = "weed";
+            obstacles[0, 8] = "weed";
+            obstacles[0, 9] = "tree";
             obstacles[1, 1] = "boulder";
             obstacles[1, 4] = "weed";
-            obstacles[1, 13] = "rock";
+            obstacles[1, 8] = "rock";
             obstacles[2, 2] = "stump";
-            obstacles[2, 12] = "bush";
-            obstacles[3, 1] = "weed";
-            obstacles[4, 3] = "bush";
-            obstacles[3, 14] = "weed";
+            obstacles[2, 7] = "bush";
+            obstacles[3, 1] = "bush";
+            obstacles[3, 8] = "weed";
             obstacles[4, 0] = "rock";
-            obstacles[4, 15] = "rock";
+            obstacles[4, 9] = "rock";
             obstacles[5, 2] = "weed";
-            obstacles[5, 13] = "weed";
+            obstacles[5, 7] = "weed";
             obstacles[6, 1] = "bush";
-            obstacles[6, 14] = "stump";
+            obstacles[6, 8] = "stump";
             obstacles[8, 1] = "weed";
-            obstacles[8, 14] = "weed";
-            obstacles[9, 3] = "rock";
-            obstacles[9, 12] = "rock";
-            obstacles[11, 1] = "weed";
-            obstacles[11, 14] = "weed";
-            obstacles[13, 2] = "bush";
-            obstacles[13, 13] = "bush";
-            obstacles[14, 0] = "tree";
-            obstacles[14, 15] = "tree";
-            obstacles[15, 4] = "rock";
-            obstacles[15, 11] = "rock";
+            obstacles[8, 3] = "rock";
+            obstacles[8, 7] = "rock";
+            obstacles[8, 8] = "weed";
+            obstacles[9, 0] = "tree";
+            obstacles[9, 4] = "rock";
+            obstacles[9, 9] = "tree";
 
             var state = new FarmSaveData
             {
                 width = Width,
                 height = Height,
-                player = new FarmPlayerProgress { x = 8, y = 15, facingX = 0, facingY = -1 }
+                player = new FarmPlayerProgress { x = 5, y = 9, facingX = 0, facingY = -1 }
             };
 
             for (var y = 0; y < Height; y++)

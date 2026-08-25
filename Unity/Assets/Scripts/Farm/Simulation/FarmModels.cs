@@ -108,7 +108,7 @@ namespace Game.Farm
         public const int CurrentSchemaVersion = 1;
 
         public int schemaVersion = CurrentSchemaVersion;
-        public string farmId = "farm_clearing_16x16";
+        public string farmId = "farm_clearing_10x10";
         public string displayName = "Starter Plot";
         public int width;
         public int height;

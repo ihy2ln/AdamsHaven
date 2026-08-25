@@ -47,7 +47,7 @@ namespace Game.Farm
             hudGo.transform.SetParent(transform, false);
             hudGo.AddComponent<FarmHud>().Init(ctrl);
 
-            Debug.Log("[Adams Haven] 16×16 farm hub booted: real-time/battle growth, fertilizer, inventory, saves, and Battle scene travel.");
+            Debug.Log("[Adams Haven] 10×10 farm hub booted: real-time/battle growth, fertilizer, inventory, saves, and Battle scene travel.");
         }
     }
 }

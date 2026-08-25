@@ -31,13 +31,13 @@ namespace Game.Farm
 
     public enum FarmSoilKind { Untilled, Tilled }
 
-    /// <summary>Scene-facing metadata for the authored 16×16 clearing farm.</summary>
+    /// <summary>Scene-facing metadata for the authored 10×10 clearing farm.</summary>
     public static class FarmStarterMap
     {
-        public const string Id = "farm_clearing_16x16";
+        public const string Id = "farm_clearing_10x10";
         public const string DisplayName = "Starter Plot";
         public const int Width = FarmStarterContent.Width;
         public const int Height = FarmStarterContent.Height;
-        public static readonly Vector2Int PlayerStart = new Vector2Int(8, 15);
+        public static readonly Vector2Int PlayerStart = new Vector2Int(5, 9);
     }
 }

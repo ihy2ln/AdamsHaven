@@ -2,15 +2,18 @@ using UnityEngine;
 
 namespace Game.Farm
 {
-    /// <summary>Top-down grid helpers for the authored 16×16 farm presentation.</summary>
+    /// <summary>Top-down grid helpers for the authored 10×10 farm presentation.</summary>
     public static class FarmIso
     {
         public const float TileSize = 1.4f;
         public const float TileHeight = 0.12f;
-        // The authored clearing image includes a forest border and a larger
-        // painted reference grid. The background material crops to this central
-        // region while the plate itself stays exactly the logical field size.
-        public const float ArtDirtCoverage = 0.80f;
+        // UV window for the painted 10x10 dirt plot in farm-layout-clearing-04.
+        // The source image is portrait and its playable plot is offset below
+        // center, so X/Y use independent coverage and offsets.
+        public const float ArtDirtCoverageX = 0.70f;
+        public const float ArtDirtCoverageY = 0.60f;
+        public const float ArtDirtOffsetX = 0.15f;
+        public const float ArtDirtOffsetY = 0.20f;
 
         public static Vector2 FieldWorldSize(int width, int height)
         {

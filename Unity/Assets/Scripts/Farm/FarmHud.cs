@@ -42,7 +42,7 @@ namespace Game.Farm
 
             GUI.Box(new Rect(12, 12, 350, 168), GUIContent.none);
             GUI.Label(new Rect(24, 18, 330, 24), "ADAMS HAVEN  ·  FARM", _title);
-            GUI.Label(new Rect(24, 44, 320, 20), $"{world.DisplayName}  ·  16×16  ·  Battles {save.totalBattles}", _body);
+            GUI.Label(new Rect(24, 44, 320, 20), $"{world.DisplayName}  ·  {world.Width}×{world.Height}  ·  Battles {save.totalBattles}", _body);
             GUI.Label(new Rect(24, 66, 320, 20), $"Farm Lv {player.Level}  ·  XP {FormatXp(player)}  ·  Harvests {save.totalHarvests}", _body);
             GUI.Label(new Rect(24, 88, 320, 20), $"Tool: {FarmController.FormatTool(_controller.SelectedTool)}  [1–5]", _body);
             GUI.Label(new Rect(24, 110, 320, 20), $"Seed: {_controller.SelectedCropName} ×{_controller.SelectedSeedCount}  [Q]", _body);
