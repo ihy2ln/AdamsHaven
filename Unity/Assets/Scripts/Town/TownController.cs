@@ -16,18 +16,21 @@ namespace Game.Town
     {
         const float MoveSpeed = 6f;
         const float InteractRange = 3.5f;
+        const float CameraRotateSpeed = 90f; // degrees/sec while Q or R is held
 
         CharacterController _cc;
         List<TownBuilding> _buildings = new();
         List<TownGate> _gates = new();
+        TownCameraFollow _cameraFollow;
 
         public TownBuilding NearestBuilding { get; private set; }
         public TownGate NearestGate { get; private set; }
 
-        public void Init(List<TownBuilding> buildings, List<TownGate> gates)
+        public void Init(List<TownBuilding> buildings, List<TownGate> gates, TownCameraFollow cameraFollow)
         {
             _buildings = buildings;
             _gates = gates;
+            _cameraFollow = cameraFollow;
         }
 
         void Awake() => _cc = GetComponent<CharacterController>();
@@ -35,6 +38,13 @@ namespace Game.Town
         void Update()
         {
             if (HavenNavigation.IsOpen) return;
+
+            if (_cameraFollow != null)
+            {
+                if (Input.GetKey(KeyCode.Q)) _cameraFollow.Yaw -= CameraRotateSpeed * Time.deltaTime;
+                if (Input.GetKey(KeyCode.R)) _cameraFollow.Yaw += CameraRotateSpeed * Time.deltaTime;
+            }
+
             var h = Input.GetAxisRaw("Horizontal");
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h = -1f;
             if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h = 1f;
@@ -42,8 +52,14 @@ namespace Game.Town
             if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v = -1f;
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v = 1f;
 
-            var move = new Vector3(h, 0f, v);
-            if (move.sqrMagnitude > 1f) move.Normalize();
+            var input = new Vector3(h, 0f, v);
+            if (input.sqrMagnitude > 1f) input.Normalize();
+
+            // Camera-relative (M34): W always means "away from camera" on screen, not a
+            // fixed world axis -- otherwise rotating the view with Q/R would leave
+            // movement pointing the wrong way on screen after the first turn.
+            var yaw = _cameraFollow != null ? _cameraFollow.Yaw : 0f;
+            var move = Quaternion.Euler(0f, yaw, 0f) * input;
             _cc.SimpleMove(move * MoveSpeed);
 
             UpdateNearest();

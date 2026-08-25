@@ -194,6 +194,37 @@ machine, which it needs to run its Python-based bridge server. New **`Tools/unit
 (`status` / `typecheck` / `test`) wraps the batchmode commands this session ran
 by hand all along -- deliberately has no `build` subcommand; see item 26 below for why.
 
+M29 (this session) adds the battle system's first **locomotion** clip, piloted on
+Melee only: units have never had a walk animation -- `BattleVisuals.MoveToStage`
+just lerps a static sprite's position to centre stage (0.25s), and the only FMV clips
+that existed were M12's 3 basic-attack body animations. `ClipSet` gains a new reserved
+key, `KeyWalk = "walk"`, generated the same way as the existing 3 clips: a new
+`clip_melee_walk` entry in `Tools/ComfyUI/manifest.yaml` (`character_clip.json`
+workflow, MiniMax H3, seed `100304`), run via `generate.py --only clip_melee_walk`.
+8 frames were requested (deliberately short, to fit the existing 0.25s tween instead
+of slowing down a beat tuned live across several sessions (M15)); MiniMax H3's
+`length` is a request not a guarantee (`Tools/ComfyUI/README.md`'s own documented
+quirk) and it actually produced 22 (0.92s) -- trimmed to the first 6 frames
+(`ffmpeg -frames:v 6`, exactly 0.25s at 24fps) before import, both to honor the
+pacing decision and because a walk clip overlapping the very next `PlayImpactBeat`
+attack-clip call on the same `BattleClipPlayer` instance would have been a real bug
+(both share one `VideoPlayer`/`RenderTexture`/quad per unit). The untrimmed 22-frame
+original is preserved at `Tools/ComfyUI/.generated_raw/clip_melee_walk.mp4` if a
+fuller cycle is wanted later. `BattleAssetBuilder.ArchetypeSpec` gained an optional
+`WalkClipAssetId`, set only on `"Melee"`; `BuildClipSet` authors the `"walk"`
+`ClipEntry` when it's present, same chroma-key/tolerance as `"basicAttack"` but no
+`impactFrames` (a walk has no damage beat to sync to). `ContentVersion` bumped 9 -> 10.
+`BattleVisuals.HasWalkClip`/a new `PlayWalkClip` fire the clip alongside (not
+blocking) `MoveToStage`'s existing position tween -- the clip quad already rides the
+unit's own root transform (`BuildUnitView`), so it moves with the tween for free, no
+new positional logic needed. `ClipMetadataTests.MeleeBasic_HasAWalkClip` guards it.
+**Ranged and Support don't have a walk clip yet** -- extend the same pattern once this
+pilot reads right in play. Same "Known gaps" caveat as every prior content addition:
+the manifest/code changes are real, but `AI.Game > Battle > Build Assets From
+Manifest` is Editor-interactive-only (`BattleContentGuard` hard-bails on
+`Application.isBatchMode`), so this needs the project owner's own Editor session to
+actually land in `Resources/Battle` and be played.
+
 ## What changed from the original design
 
 1. **Combat model/camera — pivoted at M3.** FOUNDATION.md specifies an isometric
@@ -1339,6 +1370,57 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       scoped to Town's own foundation, not touching the other scenes.
       `Tools/typecheck.sh` extended to also cover `Scripts/Navigation`, since
       `Game.Town` now has a real compile-time dependency on it.
+30. **Player-rotatable camera + per-building roof crops -- M34.** Two follow-ups from
+    the project owner's first live playtest of M33's ground image: "the map view would
+    have to change since the perspective is backwards, or you need to let the user
+    change the camera rotation," and a request for the houses to read as more than flat
+    colour boxes.
+    - **Camera rotation, not a guessed fixed angle.** Rather than trying to work out the
+      "correct" orientation blind (no Editor access to verify against), `TownCameraFollow`
+      became a proper orbit camera -- `Pitch`/`Distance` fixed, `Yaw` a public field
+      `TownController` adjusts live on **Q**/**R** (held). `TownBootstrap.ApplyCamera` no
+      longer sets position/rotation at all; that's `TownCameraFollow`'s job every frame
+      now. **Movement became camera-relative to match** (`Quaternion.Euler(0, yaw, 0) *
+      input`) -- otherwise rotating the view would leave WASD pointing the wrong way on
+      screen after the first turn, trading one orientation bug for a worse one.
+    - **Roof-cap textures, not full 3D-wrapped buildings.** Explained the real
+      constraint first: a single top-down painting has no wall/side imagery to "wrap"
+      onto a box -- only roofs are visible from directly above. What's actually
+      achievable and consistent with this project's existing 2D-sprite-over-primitives
+      convention (Farm/Battle characters are billboards, not modeled): crop each
+      building's own roof out of the source picture and place it on a raised plane right
+      above that building's (still-invisible) box -- a bas-relief look, the painted roof
+      popping up out of the flat ground. Confirmed with the project owner before
+      building it (AssetForge doesn't help here either -- it's a library/cataloguing
+      tool for already-produced art per this doc's own "What changed" item 3, not a
+      3D-model generator).
+    - **How the crops were made.** No image-editing tool was available directly, but
+      ComfyUI's own bundled Python (`ComfyUI_windows_portable/python_embeded/python.exe`)
+      has Pillow -- used a one-off crop script (not checked into the repo) against 16
+      hand-eyeballed pixel rectangles in the source image, matched by eye to
+      `TownVisuals.cs`'s existing building layout/order. Saved to
+      `Assets/Resources/Town/Art/Roofs/*.png`, each with a hand-written `.meta`
+      (Default texture type, same reasoning as M33's ground image). Spot-checked several
+      after generating (town_hall, a cottage, general_store, the water tower) and fixed
+      one bad market-row crop that first came out framing a street lamp instead of a
+      shop -- coordinates are approximate throughout, expect some further drift once
+      seen at actual in-game scale.
+    - **`TownVisuals.RoofCap`** (new): a `Plane`, its collider stripped (the roof box
+      underneath already handles collision), built against the *un-scaled scene root*
+      and only reparented to the building afterward with `worldPositionStays: true` --
+      parenting it to the building's own box directly first would have silently
+      multiplied its scale by the box's non-uniform size (a real bug caught before it
+      shipped, not after). Every district's `Build*` method now threads a resource-key
+      string per building through to `Building()`; the water tower (a `Cylinder`, not
+      built via `Building()`) calls `RoofCap` directly.
+    - **Kept off the other scenes, per this session's own correction above** -- only
+      Town-side files touched (`TownVisuals.cs`, `TownController.cs`,
+      `TownCameraFollow.cs`, `TownBootstrap.cs`, `TownHud.cs`'s control hint) plus the
+      new roof-crop assets. A second, unrelated batch of concurrent changes (Battle FMV
+      clip work: `BattleVisuals.cs`, `ClipSet.cs`, `BattleAssetBuilder.cs`,
+      `ClipMetadataTests.cs`, a new `clip_melee_walk.mp4`, ComfyUI manifest edits)
+      appeared mid-session the same way M33's navigation work did -- left entirely alone
+      and excluded from this commit.
 
 ## Roster
 
@@ -1423,6 +1505,7 @@ costs the turn.
 | M29 | Battle<->farm transition, both directions: Camp's "Leave dungeon" loads Farm.unity (committed); Farm's "Return to Camp" loads Battle.unity (written, uncommitted -- see "Known gaps") | *(not yet tagged)* |
 | M30-M32 | Town hub scaffold: new `Game.Town` assembly, blockout matching the reference image (Market Row/Residential/Utility/Town Hall), two gates to Farm/Battle, Camp's exit repointed to Town | *(not yet tagged)* |
 | M33 | Reference image applied as a ground-plane texture (real "nicer graphics" pass); M30-M32's hub-topology assumption corrected -- Town/Home/Battle/Farm are each their own scene, not Town-as-center | *(not yet tagged)* |
+| M34 | Player-rotatable orbit camera (Q/R) with camera-relative movement; per-building roof-crop textures on raised planes (bas-relief, not full 3D) | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That

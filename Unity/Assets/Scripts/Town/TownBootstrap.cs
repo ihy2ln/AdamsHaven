@@ -37,7 +37,7 @@ namespace Game.Town
             if (cam == null) cam = camGo.AddComponent<Camera>();
             if (camGo.GetComponent<AudioListener>() == null) camGo.AddComponent<AudioListener>();
             cam.tag = "MainCamera";
-            ApplyCamera(cam, built.PlayerSpawn);
+            ApplyCamera(cam);
 
             var playerGo = new GameObject("Player");
             playerGo.transform.SetParent(transform, false);
@@ -58,11 +58,11 @@ namespace Game.Town
                 bodyRenderer.material = new Material(shader) { color = new Color(0.36f, 0.55f, 0.85f) };
             }
 
-            var ctrl = playerGo.AddComponent<TownController>();
-            ctrl.Init(built.Buildings, built.Gates);
-
             var camFollow = camGo.AddComponent<TownCameraFollow>();
             camFollow.Target = playerGo.transform;
+
+            var ctrl = playerGo.AddComponent<TownController>();
+            ctrl.Init(built.Buildings, built.Gates, camFollow);
 
             var hudGo = new GameObject("TownHud");
             hudGo.transform.SetParent(transform, false);
@@ -71,12 +71,13 @@ namespace Game.Town
             Debug.Log("[Adams Haven] Town hub booted -- blockout only, see PROJECT-README's Town milestones.");
         }
 
-        static void ApplyCamera(Camera cam, Vector3 lookAt)
+        // Position/rotation are no longer set here -- TownCameraFollow (added after the
+        // player exists, see Boot() above) owns those every frame now that yaw is
+        // player-adjustable. This only sets the properties that don't change at runtime.
+        static void ApplyCamera(Camera cam)
         {
             cam.orthographic = true;
             cam.orthographicSize = 16f;
-            cam.transform.rotation = Quaternion.Euler(55f, 0f, 0f);
-            cam.transform.position = lookAt - cam.transform.forward * 24f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.45f, 0.55f, 0.6f);
             cam.nearClipPlane = 0.05f;
