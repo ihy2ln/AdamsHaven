@@ -156,7 +156,10 @@ namespace Game.Farm
                 go.name = $"Tile_{x}_{y}";
                 go.transform.SetParent(root, false);
                 go.transform.position = FarmIso.GridToWorld(x, y, FarmIso.TileHeight * 0.5f);
-                go.transform.localScale = new Vector3(FarmIso.TileSize * 0.94f, FarmIso.TileHeight, FarmIso.TileSize * 0.94f);
+                // The collider is the interaction cell. Keep it the same size as
+                // the visual soil overlay so pointer targeting never lands in a
+                // gap between farm squares.
+                go.transform.localScale = new Vector3(FarmIso.TileSize, FarmIso.TileHeight, FarmIso.TileSize);
                 _tileViews[new Vector2Int(x, y)] = go;
                 // Keep the collider for pointer targeting, but let the authored
                 // dirt layout remain the visible farmland surface.
@@ -166,7 +169,10 @@ namespace Game.Farm
                 overlay.transform.SetParent(root, false);
                 overlay.transform.position = FarmIso.GridToWorld(x, y, FarmIso.TileHeight + 0.025f);
                 overlay.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-                overlay.transform.localScale = new Vector3(FarmIso.TileSize * 0.88f, FarmIso.TileSize * 0.88f, 1f);
+                // One overlay is one logical farm cell. The authored clearing is
+                // the visible untilled ground, so this only appears after hoeing
+                // and must line up edge-to-edge with the interaction grid.
+                overlay.transform.localScale = new Vector3(FarmIso.TileSize, FarmIso.TileSize, 1f);
                 Object.Destroy(overlay.GetComponent<Collider>());
                 _soilViews[new Vector2Int(x, y)] = overlay;
                 ApplyTileMaterial(go, x, y);
@@ -202,29 +208,39 @@ namespace Game.Farm
             var root = new GameObject("DecorativeFlora").transform;
             root.SetParent(transform, false);
             // Deterministic accents keep the clearing readable while making the
-            // separated plant assets visible as independent world objects. They
-            // are presentation-only: no collider, crop state, or save data.
-            AddDecorativeFlora(root, 1, 1, _matCloverSprite, 0.48f);
-            AddDecorativeFlora(root, 4, 1, _matFlowerSprite, 0.46f);
-            AddDecorativeFlora(root, 7, 1, _matFernSprite, 0.52f);
-            AddDecorativeFlora(root, 12, 1, _matBushSprite, 0.54f);
-            AddDecorativeFlora(root, 14, 3, _matWeedSprite, 0.42f);
-            AddDecorativeFlora(root, 2, 6, _matFlowerSprite, 0.42f);
-            AddDecorativeFlora(root, 13, 7, _matCloverSprite, 0.46f);
-            AddDecorativeFlora(root, 1, 11, _matFernSprite, 0.54f);
-            AddDecorativeFlora(root, 14, 12, _matWeedSprite, 0.42f);
-            AddDecorativeFlora(root, 4, 14, _matFlowerSprite, 0.44f);
-            AddDecorativeFlora(root, 10, 14, _matCloverSprite, 0.46f);
-            AddDecorativeFlora(root, 14, 14, _matBushSprite, 0.54f);
+            // separated plant assets feel planted in the authored forest edge.
+            // They are presentation-only: no collider, crop state, or save data.
+            // Offsets sit inside the cell so the art does not form a rigid row.
+            AddDecorativeFlora(root, 2, 0, _matFernSprite, 0.52f, new Vector3(-0.08f, 0f, -0.12f));
+            AddDecorativeFlora(root, 5, 0, _matFlowerSprite, 0.46f, new Vector3(0.08f, 0f, -0.10f));
+            AddDecorativeFlora(root, 8, 0, _matCloverSprite, 0.44f, new Vector3(-0.03f, 0f, -0.08f));
+            AddDecorativeFlora(root, 11, 0, _matBushSprite, 0.54f, new Vector3(0.10f, 0f, -0.10f));
+            AddDecorativeFlora(root, 13, 1, _matFlowerSprite, 0.42f, new Vector3(0.10f, 0f, -0.03f));
+            AddDecorativeFlora(root, 15, 2, _matFernSprite, 0.50f, new Vector3(0.10f, 0f, -0.05f));
+            AddDecorativeFlora(root, 15, 5, _matCloverSprite, 0.46f, new Vector3(0.12f, 0f, 0.04f));
+            AddDecorativeFlora(root, 15, 8, _matWeedSprite, 0.42f, new Vector3(0.10f, 0f, 0.08f));
+            AddDecorativeFlora(root, 15, 11, _matBushSprite, 0.50f, new Vector3(0.10f, 0f, 0.03f));
+            AddDecorativeFlora(root, 14, 13, _matFlowerSprite, 0.44f, new Vector3(0.08f, 0f, 0.08f));
+            AddDecorativeFlora(root, 13, 15, _matFernSprite, 0.52f, new Vector3(0.06f, 0f, 0.10f));
+            AddDecorativeFlora(root, 10, 15, _matCloverSprite, 0.44f, new Vector3(-0.05f, 0f, 0.10f));
+            AddDecorativeFlora(root, 7, 15, _matFlowerSprite, 0.42f, new Vector3(0.04f, 0f, 0.11f));
+            AddDecorativeFlora(root, 2, 15, _matBushSprite, 0.52f, new Vector3(-0.08f, 0f, 0.10f));
+            AddDecorativeFlora(root, 0, 13, _matFernSprite, 0.50f, new Vector3(-0.10f, 0f, 0.06f));
+            AddDecorativeFlora(root, 0, 10, _matFlowerSprite, 0.44f, new Vector3(-0.10f, 0f, -0.04f));
+            AddDecorativeFlora(root, 0, 7, _matCloverSprite, 0.46f, new Vector3(-0.10f, 0f, 0.04f));
+            AddDecorativeFlora(root, 0, 3, _matWeedSprite, 0.42f, new Vector3(-0.10f, 0f, -0.04f));
+            AddDecorativeFlora(root, 2, 2, _matFlowerSprite, 0.40f, new Vector3(-0.08f, 0f, -0.06f));
+            AddDecorativeFlora(root, 13, 4, _matCloverSprite, 0.42f, new Vector3(0.08f, 0f, 0.03f));
         }
 
-        void AddDecorativeFlora(Transform parent, int x, int y, Material material, float scale)
+        void AddDecorativeFlora(Transform parent, int x, int y, Material material, float scale, Vector3 cellOffset)
         {
             if (!_world.InBounds(x, y) || !string.IsNullOrEmpty(_world.GetObstacleId(x, y)) || _world.GetCrop(x, y) != null)
                 return;
             var root = new GameObject($"Flora_{x}_{y}");
             root.transform.SetParent(parent, false);
-            root.transform.position = FarmIso.GridToWorld(x, y, FarmIso.TileHeight);
+            root.transform.position = FarmIso.GridToWorld(x, y, FarmIso.TileHeight)
+                + new Vector3(cellOffset.x * FarmIso.TileSize, 0f, cellOffset.z * FarmIso.TileSize);
             AddSprite(root.transform, material, new Vector3(0f, 0.28f, 0f),
                 new Vector3(scale, scale, scale));
             _decorativeFloraViews[new Vector2Int(x, y)] = root.gameObject;
