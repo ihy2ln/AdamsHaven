@@ -1290,6 +1290,13 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       next time: `ls` a directory before assuming it's empty, even one that looks
       brand-new -- multiple agents share this tree and can be mid-work anywhere in it,
       not just under `Scripts/Farm/`.
+    - **Latent fragility, not fixed (Farm-side, so left alone):** `FarmSceneBuilder.
+      CreateStarterScene()` and `FarmBatchSetup` both still *overwrite*
+      `EditorBuildSettings.scenes` wholesale (checking only for Battle.unity before doing
+      so). Re-running either after Town.unity exists would silently drop Town from Build
+      Settings, breaking every `SceneManager.LoadScene("Town")` call until someone
+      notices. `TownSceneBuilder.cs` *appends* instead, correctly -- but that only
+      protects the direction Town runs in, not the reverse.
 
 ## Roster
 
