@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Game.Navigation;
 
 namespace Game.Town
 {
@@ -37,7 +36,7 @@ namespace Game.Town
 
         void Update()
         {
-            if (HavenNavigation.IsOpen) return;
+            if (Time.timeScale <= 0f) return;
 
             if (_cameraFollow != null)
             {

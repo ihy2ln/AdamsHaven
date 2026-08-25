@@ -28,7 +28,10 @@ its tests/docs are updated.
 
 Keep the farm in `Game.Farm`, under `Assets/Scripts/Farm`, with its own scene and
 save boundary. Farm may consume a small battle report contract, but it must not
-reference or modify the battle implementation.
+reference or modify the battle implementation. The `Game.Farm` assembly references
+`Game.Data` only; Town, Home, Camp, and shared navigation stay outside the Farm
+assembly. Scene travel is an intentionally one-way string route at the Farm
+controller boundary, not a code dependency on another gameplay assembly.
 
 **Exit gate:** farm and battle compile as separate slices; farm changes leave
 `Assets/Scripts/Battle` and `Assets/Scenes/Battle.unity` untouched.

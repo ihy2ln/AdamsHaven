@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using Game.Navigation;
 
 namespace Game.Farm
 {
@@ -39,7 +38,10 @@ namespace Game.Farm
 
         void Update()
         {
-            if (World == null || HavenNavigation.IsOpen) return;
+            // The shared travel overlay pauses the clock. Keep this controller
+            // independent from the navigation assembly so Farm remains a clean
+            // simulation slice with no Town/Home/Battle code dependency.
+            if (World == null || Time.timeScale <= 0f) return;
             HandleKeyboard();
             HandlePointer();
             if (Time.unscaledTime >= _nextGrowthRefresh)

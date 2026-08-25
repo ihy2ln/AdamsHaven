@@ -2,8 +2,7 @@
     "name": "Game.Farm",
     "rootNamespace": "",
     "references": [
-        "Game.Data",
-        "Game.Navigation"
+        "Game.Data"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
