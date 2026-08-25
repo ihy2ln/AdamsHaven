@@ -239,14 +239,13 @@ namespace Game.Battle
             camp.OnNodeChosen += node => EnterNode(node, party, bench, inventory, rewards);
             camp.OnLeaveDungeonRequested += () =>
             {
-                // Farm.unity is home now (first cut of the battle<->farm boundary --
-                // one-directional for now, camp to farm only; Farm.unity is on its own
-                // FarmBootstrap that boots itself the same way this one does, so there's
-                // nothing else to wire on this side). Both scenes need to be in Build
-                // Settings for LoadScene-by-name to resolve, including inside Play mode --
-                // see EditorBuildSettings.asset and BuildBattleStandalone.cs.
-                Debug.Log("[Adams Haven] Left the dungeon -- heading home to the farm.");
-                SceneManager.LoadScene("Farm");
+                // Town.unity is the hub now (M32) -- Farm and the dungeon are both
+                // reachable from inside Town (TownGate), so Camp's own exit goes there
+                // instead of straight to Farm. Needs Town.unity to actually exist first:
+                // run AI.Game > Town > Create Starter Scene once (adds itself to Build
+                // Settings on creation -- see TownSceneBuilder.cs).
+                Debug.Log("[Adams Haven] Left the dungeon -- heading home to town.");
+                SceneManager.LoadScene("Town");
             };
 
             Debug.Log($"[AI.Game] Camp booted -- {_run.AvailableNextNodes().Count} node(s) available next. \"{arrival}\"");

@@ -50,8 +50,8 @@ namespace Game.Battle
         public event Action<RunMapNode> OnNodeChosen;
 
         /// <summary>Raised by "Leave dungeon" -- BattleBootstrap's listener loads
-        /// Farm.unity (first cut of the battle&lt;-&gt;farm boundary, one-directional for
-        /// now: camp to farm only).</summary>
+        /// Town.unity (M32), the hub scene Farm and the dungeon are both reachable
+        /// from.</summary>
         public event Action OnLeaveDungeonRequested;
 
         GUIStyle _title, _body, _btn, _heading, _nodeBtn;

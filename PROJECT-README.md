@@ -1221,6 +1221,75 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       clean (`Tools/unity.sh typecheck`, which covers `Game.Farm` too). **Whoever commits
       the rest of the Farm refactor should carry this along with it** -- it's sitting
       right there in the working tree, just not yet in git history.
+28. **Town hub scaffold, M30-M32.** Project-owner request: build the Town scene, using
+    a reference image (a forest-clearing crossroads town: Market Row NW, Residential NE,
+    Utility/Storage SW, Town Hall + plaza SE) as the layout target, with confirmation
+    that **Town replaces Farm as the hub centre** -- Camp's exit now goes to Town, and
+    Farm becomes one of the things reachable from inside it. Checked FOUNDATION.md's own
+    Town design (5.5) first: a full SimCity-style build-queue/district-level system with
+    five verb-unlocking buildings (Guild Hall/Blacksmith/Kitchen/Market/Barracks) -- far
+    more than a vertical slice needs on day one, so this scopes down the same way Battle
+    and Farm both did from their own original designs: a walkable blockout first, real
+    building function later, one at a time.
+    - **New `Game.Town` assembly** (`Scripts/Town/`, its own asmdef with **no references
+      to Game.Farm** -- deliberate decoupling so Town's compile can never break from
+      Farm's in-progress refactor, and vice versa). `TownBootstrap` self-boots exactly
+      like Farm/BattleBootstrap (no Inspector wiring); `TownVisuals` builds the blockout
+      from primitives (`GameObject.CreatePrimitive`, no imported art -- a real art pass
+      through the same curated-library/ComfyUI pipeline Farm's roster used is its own
+      later milestone); `TownController` is plain continuous WASD movement via
+      `CharacterController`, deliberately not Farm's grid/tile system (Town has no
+      per-tile simulation state to track); `TownHud` is the usual code-first IMGUI.
+    - **`TownBuilding`** (M31) tags each placed lot with a `TownBuildingType`
+      (MarketStall/House/UtilityShed/TownHall) and a display name -- five shops, six
+      houses, three utility buildings plus a water tower, one Town Hall with a flagpole
+      plaza -- matching the reference image's counts and quadrant placement. Walking
+      close to one shows "X -- not built yet" via `TownHud`; no function behind any of
+      them yet, same placeholder-lot pattern as the dungeon's still-inert Merchant/
+      Unknown node types.
+    - **Two `TownGate`s** (M32) at the tree line -- "Path to the Farm" and "Path to the
+      Dungeon" -- walk up and press E to `SceneManager.LoadScene` straight into
+      `Farm`/`Battle`. `BattleBootstrap`'s `OnLeaveDungeonRequested` (previously loading
+      Farm directly, from the prior session's M29) now loads `Town` instead, and
+      `BuildBattleStandalone`'s scene list carries all three scenes into a real
+      standalone build (guarded by `File.Exists` for Farm/Town, since neither is
+      guaranteed to exist on a fresh checkout).
+    - **`TownSceneBuilder.cs`** (new, mirrors `FarmSceneBuilder.cs`) --
+      `AI.Game > Town > Create Starter Scene` creates `Town.unity` and registers it in
+      Build Settings. **Not yet run** -- same headless-`AssetDatabase.SaveAssets()`
+      restriction as every other scene-creation step in this project (see "Known gaps"),
+      so `Town.unity` doesn't exist as a file yet, only the tooling to create it does.
+      Unlike `FarmSceneBuilder`'s own version, this one *appends* to whatever's already
+      in `EditorBuildSettings` rather than overwriting it -- there are three scenes to
+      keep now, not two.
+    - **`Tools/typecheck.sh` extended to cover `Game.Town`** the same way it already
+      covered `Game.Farm`. Verified clean.
+    - **Kept entirely off Scripts/Farm/** -- no Farm-side file was read for reference
+      beyond `FarmIso.cs`'s camera-angle values (not imported, just matched by eye for a
+      visually consistent pitch/tone), per the project owner's explicit "leave that up to
+      GPT" this session.
+    - **Not yet run or played.** Needs, in order: (1) run
+      `AI.Game > Town > Create Starter Scene` once in the Editor, (2) Play-test the
+      blockout -- walking, both gates, all ten building prompts, (3) confirm the full
+      loop (Battle win/escape/quit -> Camp -> Town -> Farm, and Town -> Battle) actually
+      connects end to end.
+    - **A real mistake happened building this, worth recording.** ChatGPT had
+      independently started its own Town scaffold in the same `Scripts/Town/` folder
+      before this work began -- discovered only after the fact via a stray
+      `TownIso.cs` (a camera helper, untouched, still sitting there uncommitted) and
+      `.meta` timestamps that predated three of this milestone's own files.
+      `TownBootstrap.cs`, `TownController.cs`, and `TownVisuals.cs` all came back from a
+      file-write call as "updated" rather than "created" -- meaning ChatGPT's own
+      versions of those exact three filenames already existed, and got overwritten
+      without being read first, in violation of the normal "read an existing file before
+      overwriting it" rule. Since none of it was ever committed, ChatGPT's original
+      content isn't recoverable from git history -- only from ChatGPT's own conversation
+      context, if asked. Flagged to the project owner immediately on discovery; their
+      direction was to keep this scaffold as the real starting point ("this is the first
+      that the foundation will be worked on"), so it's what's committed here. Lesson for
+      next time: `ls` a directory before assuming it's empty, even one that looks
+      brand-new -- multiple agents share this tree and can be mid-work anywhere in it,
+      not just under `Scripts/Farm/`.
 
 ## Roster
 
@@ -1303,6 +1372,7 @@ costs the turn.
 | M27 | Curated 5-node test dungeon (`GenerateCuratedTestRun`) replaces the randomized graph in `Boot()`: map1 fight, map2 fight, rest, treasure, boss | *(not yet tagged)* |
 | M28 | MCP server (`com.coplaydev.unity-mcp`) + `Tools/unity.sh` CLI -- project-wide tooling, not a battle-scene feature | *(not yet tagged)* |
 | M29 | Battle<->farm transition, both directions: Camp's "Leave dungeon" loads Farm.unity (committed); Farm's "Return to Camp" loads Battle.unity (written, uncommitted -- see "Known gaps") | *(not yet tagged)* |
+| M30-M32 | Town hub scaffold: new `Game.Town` assembly, blockout matching the reference image (Market Row/Residential/Utility/Town Hall), two gates to Farm/Battle, Camp's exit repointed to Town | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
