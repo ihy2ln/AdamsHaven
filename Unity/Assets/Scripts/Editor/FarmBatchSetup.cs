@@ -19,7 +19,7 @@ namespace Game.EditorTools
             bootstrap.AddComponent<FarmBootstrap>();
             EditorSceneManager.SaveScene(scene, scenePath);
 
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(scenePath, true) };
+            EditorBuildSettings.scenes = BuildSceneList(scenePath);
 
             PlayerSettings.productName = "Adams Haven";
             PlayerSettings.companyName = "AI.Game";
@@ -29,6 +29,15 @@ namespace Game.EditorTools
             AssetDatabase.SaveAssets();
             Debug.Log($"[AI.Game] Ensured {scenePath}");
             EditorApplication.Exit(0);
+        }
+
+        static EditorBuildSettingsScene[] BuildSceneList(string farmScenePath)
+        {
+            var scenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
+            const string battleScenePath = "Assets/Scenes/Battle.unity";
+            if (File.Exists(battleScenePath)) scenes.Add(new EditorBuildSettingsScene(battleScenePath, true));
+            scenes.Add(new EditorBuildSettingsScene(farmScenePath, true));
+            return scenes.ToArray();
         }
     }
 }

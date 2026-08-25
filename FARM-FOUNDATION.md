@@ -47,7 +47,7 @@ Town buildings do not currently grant farm stat bonuses; that would contradict t
 
 Battle resolution submits a `FarmBattleReport`. Its completed-battle count advances every eligible watered crop, including endless-mode fights. Optional reward stacks enter the same save inventory boundary for later replacement by the project-wide `MaterialDefinition` economy.
 
-The farm scene’s `B` key submits a temporary one-battle report so the connection can be exercised before `BattleController` is wired to the shared save/session service.
+The farm scene’s `B` key now enters the Battle scene; `T` remains a temporary one-battle report for testing crop growth until `BattleController` is wired to the shared save/session service.
 
 ## Save boundary
 
@@ -64,7 +64,8 @@ The farm scene’s `B` key submits a temporary one-battle report so the connecti
 | P | Plant |
 | F | Apply fertilizer |
 | R | Harvest |
-| B | Temporary completed-battle test |
+| B | Enter Battle scene |
+| T | Temporary completed-battle test |
 | Click/tap | Move or use the selected tool on an obstacle |
 
 Touch controls expose movement, tool/seed selection, fertilizing, planting, and harvesting.

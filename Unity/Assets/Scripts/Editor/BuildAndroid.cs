@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Game.EditorTools
 {
     /// <summary>
-    /// Android release build of the battle scene. Player settings are set here in
+    /// Android release build of the battle + farm scene flow. Player settings are set here in
     /// script, not by hand in the Inspector -- matches the project's code-first
     /// convention. No adb on this dev machine, so this produces the APK but cannot
     /// install/verify on a physical device; that step needs to happen on a machine
@@ -37,7 +37,7 @@ namespace Game.EditorTools
 
             var options = new BuildPlayerOptions
             {
-                scenes = new[] { "Assets/Scenes/Battle.unity" },
+                scenes = new[] { "Assets/Scenes/Battle.unity", "Assets/Scenes/Farm.unity" },
                 locationPathName = "S:/AI/Game/play/android/AI.Game-Battle-v0.4.0-debug.apk",
                 target = BuildTarget.Android,
                 options = BuildOptions.None,

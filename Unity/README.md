@@ -15,6 +15,8 @@ Or double-click / Hub → open `AI.Game\Unity`.
 1. Open scene `Assets/Scenes/Farm.unity` (auto-created on first import; menu **AI.Game → Farm → Create Starter Scene** if missing).
 2. Press **Play**.
 3. `FarmBootstrap` builds the 16×16 top-down authored clearing at runtime.
+4. Press **B** or **ENTER BATTLE** to travel to `Battle.unity`; the Battle camp's
+   **Leave dungeon** route returns to the farm.
 
 ### Controls
 

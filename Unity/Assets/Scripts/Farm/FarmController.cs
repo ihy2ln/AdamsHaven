@@ -66,7 +66,8 @@ namespace Game.Farm
             if (Input.GetKeyDown(KeyCode.P)) PlantSelectedSeed();
             if (Input.GetKeyDown(KeyCode.F)) ApplyFertilizer();
             if (Input.GetKeyDown(KeyCode.R)) Harvest();
-            if (Input.GetKeyDown(KeyCode.B)) SimulateBattleCompletion();
+            if (Input.GetKeyDown(KeyCode.B)) EnterBattle();
+            if (Input.GetKeyDown(KeyCode.T)) SimulateBattleCompletion();
         }
 
         void HandlePointer()
@@ -227,14 +228,17 @@ namespace Game.Farm
             }));
         }
 
-        /// <summary>Placeholder return leg for the battle&lt;-&gt;farm boundary (M29 added
-        /// the one-directional camp-to-farm trip; this is the way back). "Camp",
-        /// "home", and "town" are all the same undifferentiated destination right now --
-        /// no dedicated town/home scene exists yet, so this just re-enters Battle.unity,
-        /// which boots a fresh dungeon run the same way pressing Play on that scene
-        /// always has. Revisit once there's an actual town/home scene and a reason to
-        /// hand off farm state on the way back.</summary>
-        public void ReturnToDungeon() => SceneManager.LoadScene("Battle");
+        /// <summary>Enters the battle scene from the farm hub. The farm save is written
+        /// before the scene switch; the battle session remains a separate runtime slice
+        /// until the shared party/economy session is implemented.</summary>
+        public void EnterBattle()
+        {
+            Save();
+            SceneManager.LoadScene("Battle");
+        }
+
+        // Kept as a source-compatible alias for existing HUD/menu callers.
+        public void ReturnToDungeon() => EnterBattle();
 
         public void UiMove(int dx, int dy) => Move(dx, dy);
 

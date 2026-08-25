@@ -27,8 +27,11 @@ namespace Game.EditorTools
             l.intensity = 1f;
 
             EditorSceneManager.SaveScene(scene, ScenePath);
-            var scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
-            EditorBuildSettings.scenes = scenes;
+            var scenes = new System.Collections.Generic.List<EditorBuildSettingsScene>();
+            const string battlePath = "Assets/Scenes/Battle.unity";
+            if (File.Exists(battlePath)) scenes.Add(new EditorBuildSettingsScene(battlePath, true));
+            scenes.Add(new EditorBuildSettingsScene(ScenePath, true));
+            EditorBuildSettings.scenes = scenes.ToArray();
             AssetDatabase.SaveAssets();
             Debug.Log($"[AI.Game] Created {ScenePath} and set as build scene 0.");
         }

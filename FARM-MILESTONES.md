@@ -73,8 +73,10 @@ Replace the temporary `B` key completion test with a shared session service that
 submits a `FarmBattleReport` when a real battle ends. Keep the farm adapter
 one-directional and farm-owned.
 
-**Exit gate:** winning an eligible battle advances watered crops exactly once;
-retry, flee, defeat, and scene reload do not award duplicate growth.
+**Exit gate:** Farm and Battle can both be opened from the build, Farm saves before
+entering Battle, and Battle can return to Farm through its camp route. Winning an
+eligible battle advancing crops exactly once remains the next shared-session step;
+retry, flee, defeat, and scene reload must not award duplicate growth.
 
 ### F6 — Market and Kitchen loop — Planned
 
