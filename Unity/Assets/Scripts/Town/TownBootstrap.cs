@@ -46,17 +46,11 @@ namespace Game.Town
             cc.height = 1.8f;
             cc.radius = 0.4f;
             cc.center = new Vector3(0f, 0.9f, 0f);
-            var bodyGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            bodyGo.name = "PlayerBody";
-            bodyGo.transform.SetParent(playerGo.transform, false);
-            bodyGo.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-            Object.DestroyImmediate(bodyGo.GetComponent<Collider>());
-            var bodyRenderer = bodyGo.GetComponent<Renderer>();
-            if (bodyRenderer != null)
-            {
-                var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
-                bodyRenderer.material = new Material(shader) { color = new Color(0.36f, 0.55f, 0.85f) };
-            }
+            // M39: the flat-color capsule is gone -- TownPlayerWalkVisual is a
+            // billboard quad cycling through AssetForge-generated walk frames while
+            // the CharacterController is actually moving. cc itself still owns
+            // collision; this is purely visual, same as the capsule it replaces.
+            TownPlayerWalkVisual.Create(playerGo.transform, cc);
 
             var camFollow = camGo.AddComponent<TownCameraFollow>();
             camFollow.Target = playerGo.transform;
