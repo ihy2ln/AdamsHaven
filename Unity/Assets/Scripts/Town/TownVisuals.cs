@@ -15,8 +15,9 @@ namespace Game.Town
     /// real construction. M36 adds back what M30/M31's removed building blockout was
     /// really marking: not buildings, but the *plots of land* they'll eventually occupy
     /// -- flat, walkable, collider-free markers (`TownBuilding`, reused rather than
-    /// renamed -- see its own doc comment) at the same four-district layout as before,
-    /// each reading "not built yet" until a real building-placement system exists.</summary>
+    /// renamed -- see its own doc comment) at the same four-district layout as before.
+    /// M38 gives those markers a real state machine and a build-choice menu -- see
+    /// `TownBuildingDefinition`, `TownEconomy`, `TownBuildMenu`.</summary>
     public static class TownVisuals
     {
         const string ReferenceImageResourcePath = "Town/Art/town_ground_empty_01";
@@ -29,10 +30,10 @@ namespace Game.Town
         static readonly Color TrunkColor = new(0.3f, 0.22f, 0.14f);
         static readonly Color LeafColor = new(0.16f, 0.32f, 0.16f);
         static readonly Color GateColor = new(0.85f, 0.75f, 0.25f);
-        static readonly Color MarketPlotColor = new(0.68f, 0.42f, 0.22f, 0.35f);
-        static readonly Color ResidentialPlotColor = new(0.4f, 0.55f, 0.35f, 0.35f);
-        static readonly Color UtilityPlotColor = new(0.5f, 0.45f, 0.4f, 0.35f);
-        static readonly Color CivicPlotColor = new(0.35f, 0.45f, 0.62f, 0.35f);
+        static readonly Color CommercialPlotColor = new(0.68f, 0.42f, 0.22f, 0.35f);
+        static readonly Color HousingPlotColor = new(0.4f, 0.55f, 0.35f, 0.35f);
+        static readonly Color IndustrialPlotColor = new(0.5f, 0.45f, 0.4f, 0.35f);
+        static readonly Color GovernmentPlotColor = new(0.35f, 0.45f, 0.62f, 0.35f);
 
         public class BuildResult
         {
@@ -58,18 +59,17 @@ namespace Game.Town
             return result;
         }
 
-        /// <summary>M36: the four districts from the reference image, as empty,
-        /// walkable plots rather than solid buildings -- same positions/footprints
-        /// M30/M31 used for actual building blockouts, reused here since they already
-        /// approximate the picture's layout reasonably well.</summary>
+        /// <summary>M38: the same 15 plots M36 laid out, now tagged by `TownDistrict`
+        /// sector rather than one fixed pre-named building each -- what actually gets
+        /// built on a plot is chosen from `TownBuildingCatalog.ForDistrict` at build
+        /// time (`TownBuildMenu`), not baked in here.</summary>
         static void BuildPlots(Transform parent, List<TownBuilding> buildings)
         {
-            var marketNames = new[] { "General Store Plot", "Apothecary Plot", "Weaver's Stall Plot", "Fishmonger Plot", "Trading Post Plot" };
             var marketStart = new Vector3(-14f, 0f, 14f);
-            for (var i = 0; i < marketNames.Length; i++)
+            for (var i = 0; i < 5; i++)
             {
                 var pos = marketStart + new Vector3(-i * 6.5f, 0f, 0f);
-                buildings.Add(Plot(parent, pos, new Vector2(5f, 5f), MarketPlotColor, TownBuildingType.MarketStall, marketNames[i]));
+                buildings.Add(Plot(parent, pos, new Vector2(5f, 5f), CommercialPlotColor, TownDistrict.Commercial, $"Commercial Plot {i + 1}"));
             }
 
             var residentialOrigin = new Vector3(14f, 0f, 30f);
@@ -78,28 +78,27 @@ namespace Game.Town
                 var col = i % 2;
                 var row = i / 2;
                 var pos = residentialOrigin + new Vector3(col * 11f, 0f, -row * 11f);
-                buildings.Add(Plot(parent, pos, new Vector2(4.5f, 4.5f), ResidentialPlotColor, TownBuildingType.House, $"Cottage Plot {i + 1}"));
+                buildings.Add(Plot(parent, pos, new Vector2(4.5f, 4.5f), HousingPlotColor, TownDistrict.Housing, $"Housing Plot {i + 1}"));
             }
 
-            var utilityNames = new[] { "Storehouse Plot", "Tool Shed Plot", "Grain Barn Plot" };
             var utilityOrigin = new Vector3(-14f, 0f, -14f);
-            for (var i = 0; i < utilityNames.Length; i++)
+            for (var i = 0; i < 3; i++)
             {
                 var pos = utilityOrigin + new Vector3(-i * 8f, 0f, -(i % 2) * 6f);
-                buildings.Add(Plot(parent, pos, new Vector2(6f, 6f), UtilityPlotColor, TownBuildingType.UtilityShed, utilityNames[i]));
+                buildings.Add(Plot(parent, pos, new Vector2(6f, 6f), IndustrialPlotColor, TownDistrict.Industrial, $"Industrial Plot {i + 1}"));
             }
             var towerPos = utilityOrigin + new Vector3(6f, 0f, -10f);
-            buildings.Add(Plot(parent, towerPos, new Vector2(3f, 3f), UtilityPlotColor, TownBuildingType.UtilityShed, "Water Tower Plot"));
+            buildings.Add(Plot(parent, towerPos, new Vector2(3f, 3f), IndustrialPlotColor, TownDistrict.Industrial, "Industrial Plot 4"));
 
             var hallPos = new Vector3(16f, 0f, -14f);
-            buildings.Add(Plot(parent, hallPos, new Vector2(9f, 7f), CivicPlotColor, TownBuildingType.TownHall, "Town Hall Plot"));
+            buildings.Add(Plot(parent, hallPos, new Vector2(9f, 7f), GovernmentPlotColor, TownDistrict.Government, "Government Plot 1"));
         }
 
         /// <summary>A flat, walkable, translucent rectangle marking an empty buildable
         /// lot -- collider stripped on purpose (the point of a plot is you can stand on
         /// it while nothing's built there), positioned just above the ground image so it
         /// doesn't z-fight with it.</summary>
-        static TownBuilding Plot(Transform parent, Vector3 pos, Vector2 footprint, Color color, TownBuildingType type, string displayName)
+        static TownBuilding Plot(Transform parent, Vector3 pos, Vector2 footprint, Color color, TownDistrict district, string displayName)
         {
             var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
             go.name = displayName;
@@ -116,8 +115,9 @@ namespace Game.Town
             }
 
             var tb = go.AddComponent<TownBuilding>();
-            tb.Type = type;
+            tb.District = district;
             tb.DisplayName = displayName;
+            tb.EmptyColor = color;
             return tb;
         }
 

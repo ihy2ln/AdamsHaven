@@ -1472,6 +1472,66 @@ actually land in `Resources/Battle` and be played.
     `TownVisuals.ReferenceImageResourcePath` repointed at it. `town_reference_01.png`
     stays on disk unused, same as the M34 roof crops -- both are real assets that might
     still be wanted once buildings are actually placed rather than deleted speculatively.
+33. **Real building rules + a working construction loop -- M38.** The project owner's
+    own spec, close to verbatim: cost in materials (earned from Battle/dungeon and from
+    Farm) plus money plus real time; more money and materials can rush the remaining
+    time; different buildings need different material types/amounts; four sectors --
+    **Commercial** (sell items/mats/gear/characters), **Housing** (nicer housing ->
+    happier residents -> better buffs/work rate), **Industrial** (blacksmith, jeweler,
+    armorer, schooling), **Government** (passive town-wide boosts) -- each with multiple
+    building options, not one fixed building per sector.
+    - **New types** (`Scripts/Town/`, still zero references to Game.Battle/Game.Farm):
+      `TownMaterialKind` (Hide/Ore/Essence -- deliberately the *same three names* as
+      `Game.Battle.BattleRewards.MaterialKind`, duplicated rather than shared since Town
+      stays decoupled, but chosen so a real cross-scene material transfer later won't
+      need a conversion table); `TownDistrict` (the four sectors, replacing M31's
+      `TownBuildingType` one-plot-one-building enum); `TownBuildingDefinition` +
+      `TownBuildingCatalog` (a starting roster of 10 buildings across the four sectors --
+      General Store/Gear Trader/Character Broker under Commercial, Cottage/Manor under
+      Housing, Blacksmith/Jeweler/Armorer/School under Industrial, Town Hall under
+      Government -- every cost/build-time number arbitrary, same "real enough to prove
+      the loop, not tuned" convention as everywhere else in this project); `TownEconomy`
+      (session-only Money + per-material wallet, seeded with a placeholder starting
+      stock and a "Test: +stock" top-up in the build panel, since there's no real
+      Battle-&gt;Town material pipe yet -- would need a save/session layer this project
+      doesn't have, see Known Gaps).
+    - **`TownBuilding` (M31's plot marker) became the actual state machine**: Empty
+      (choose what to build) -> UnderConstruction (paid for, real-time countdown via
+      `Time.time`, its own colour tint) -> Built (verb unlocked, still a text stub --
+      `TownBuildingDefinition.VerbDescription` -- since nothing downstream reads it
+      yet). The 15 plots from M36/M37 kept their exact positions/footprints but lost
+      their pre-baked single-building names (`"General Store Plot"` etc.) in favour of
+      generic per-sector labels (`"Commercial Plot 1"`) -- what actually gets built
+      there is a player choice now, not fixed at plot-placement time.
+    - **`TownBuildMenu`** (new, mirrors Battle's `CampScreen` IMGUI-modal convention): E
+      near an empty plot lists that sector's catalog with cost/time, greys out anything
+      unaffordable; E near an under-construction plot shows remaining time and a Rush
+      button (`TownBuilding.RushCost()` -- money scales with seconds remaining, plus a
+      small amount of whichever material the building needed most, per the project
+      owner's "more money and mats to hasten the time" spec; paying it completes
+      construction immediately rather than partially shortening it, simpler to reason
+      about and test). Movement pauses while the panel's open, same pattern
+      `HavenNavigation.IsOpen` already established.
+    - **A real bug caught in review, not after**: `TownBuildMenu` only ticked a plot's
+      completion check while that specific plot's own panel was open, so a plot the
+      player walked away from mid-build would sit at "0s left" forever instead of
+      flipping to Built. Fixed by having `TownController.Update` sweep every plot's
+      `CompleteIfDue()` each frame, not just the currently-open one.
+    - **Visual scope, deliberately limited**: a completed building is a colour swap on
+      the same flat plot marker (`TownBuilding.BuiltColor`), not the real solid-box-
+      plus-roof-crop treatment M34 built and M36 later removed for the empty-town
+      rework. Reusing that fully -- spawning the actual geometry and matching roof crop
+      where a plot sits once it's Built -- is a real, named follow-up (every
+      `TownBuildingDefinition` already carries a `RoofImageKey` pointing at one of the
+      M34 crops, unused for now), scoped out here so this milestone stayed about the
+      rules/loop the project owner actually asked for, not visuals.
+    - **Verified in isolation again**: another unrelated concurrent batch (Farm ground-
+      art crop/grid work: `FarmBootstrap.cs`, `FarmIso.cs`, `FarmStarterMap.cs`,
+      `FarmVisuals.cs`, `Simulation/FarmContent.cs`, `Simulation/FarmModels.cs`, a new
+      `farm-layout-clearing-04.png`) was mid-flight the whole time this milestone was
+      built. Left entirely alone; typecheck.sh reported clean project-wide by the time
+      this was committed, but Town's own correctness wasn't gated on that -- same
+      isolated-compile approach as M36.
 
 ## Roster
 
@@ -1559,6 +1619,7 @@ costs the turn.
 | M34 | Player-rotatable orbit camera (Q/R) with camera-relative movement; per-building roof-crop textures on raised planes (bas-relief, not full 3D) | *(not yet tagged)* |
 | M35-M36 | Default camera yaw; town direction confirmed as build-from-empty-dirt (FOUNDATION.md 5.5) -- building blockout replaced by walkable, collider-free plots at the same four-district layout | *(not yet tagged)* |
 | M37 | Ground image swapped for a genuinely empty crossroads-through-forest reference (no buildings painted in), matching M36's direction | *(not yet tagged)* |
+| M38 | Real building rules: 4 sectors (Commercial/Housing/Industrial/Government), 10-building starting catalog, money+materials+time cost, Rush, a working Empty->UnderConstruction->Built loop | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That

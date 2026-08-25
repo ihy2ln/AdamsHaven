@@ -21,15 +21,17 @@ namespace Game.Town
         List<TownBuilding> _buildings = new();
         List<TownGate> _gates = new();
         TownCameraFollow _cameraFollow;
+        TownBuildMenu _buildMenu;
 
         public TownBuilding NearestBuilding { get; private set; }
         public TownGate NearestGate { get; private set; }
 
-        public void Init(List<TownBuilding> buildings, List<TownGate> gates, TownCameraFollow cameraFollow)
+        public void Init(List<TownBuilding> buildings, List<TownGate> gates, TownCameraFollow cameraFollow, TownBuildMenu buildMenu)
         {
             _buildings = buildings;
             _gates = gates;
             _cameraFollow = cameraFollow;
+            _buildMenu = buildMenu;
         }
 
         void Awake() => _cc = GetComponent<CharacterController>();
@@ -37,6 +39,7 @@ namespace Game.Town
         void Update()
         {
             if (Time.timeScale <= 0f) return;
+            if (_buildMenu != null && _buildMenu.IsOpen) return;
 
             if (_cameraFollow != null)
             {
@@ -62,9 +65,19 @@ namespace Game.Town
             _cc.SimpleMove(move * MoveSpeed);
 
             UpdateNearest();
+            // TownBuildMenu only ticks CompleteIfDue on the one plot its own panel is
+            // open for -- without this, a plot the player walked away from mid-build
+            // would sit at "0s left" forever instead of flipping to Built, since nothing
+            // else re-checks its timer once the menu that started it is closed.
+            foreach (var b in _buildings) b.CompleteIfDue();
 
-            if (Input.GetKeyDown(KeyCode.E) && NearestGate != null)
-                SceneManager.LoadScene(NearestGate.TargetSceneName);
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                // Gate wins over a plot when both are in range -- gates sit at the tree
+                // line, away from any plot, so this only matters at the edge of range.
+                if (NearestGate != null) SceneManager.LoadScene(NearestGate.TargetSceneName);
+                else if (NearestBuilding != null && _buildMenu != null) _buildMenu.OpenFor(NearestBuilding);
+            }
         }
 
         void UpdateNearest()

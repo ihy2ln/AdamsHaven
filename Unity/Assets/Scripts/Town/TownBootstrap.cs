@@ -65,14 +65,25 @@ namespace Game.Town
             // lock; Q/R keeps working from here same as always.
             camFollow.Yaw = 45f;
 
+            // M38: session-only economy + the build-choice/construction panel. Economy
+            // is a plain class (no save yet -- see TownEconomy's own doc comment),
+            // reachable only through TownBuildMenu's own reference to it -- fine as
+            // long as nothing re-runs Boot() mid-session, which nothing does yet (unlike
+            // BattleBootstrap, Town has no rebuild trigger of its own today).
+            var economy = new TownEconomy();
+            var buildMenuGo = new GameObject("TownBuildMenu");
+            buildMenuGo.transform.SetParent(transform, false);
+            var buildMenu = buildMenuGo.AddComponent<TownBuildMenu>();
+            buildMenu.Init(economy);
+
             var ctrl = playerGo.AddComponent<TownController>();
-            ctrl.Init(built.Buildings, built.Gates, camFollow);
+            ctrl.Init(built.Buildings, built.Gates, camFollow, buildMenu);
 
             var hudGo = new GameObject("TownHud");
             hudGo.transform.SetParent(transform, false);
             hudGo.AddComponent<TownHud>().Init(ctrl);
 
-            Debug.Log("[Adams Haven] Town hub booted -- blockout only, see PROJECT-README's Town milestones.");
+            Debug.Log("[Adams Haven] Town hub booted -- see PROJECT-README's Town milestones.");
         }
 
         // Position/rotation are no longer set here -- TownCameraFollow (added after the
