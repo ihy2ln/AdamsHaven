@@ -133,16 +133,22 @@ namespace Game.Farm
             plate.transform.SetParent(transform, false);
             plate.transform.position = MapCenter + new Vector3(0f, -0.32f, 0f);
             var fieldSize = FarmIso.FieldWorldSize(_world.Width, _world.Height);
-            var plateSize = new Vector3(fieldSize.x / FarmIso.ArtDirtCoverage,
-                0.08f, fieldSize.y / FarmIso.ArtDirtCoverage);
+            // The plate is the logical field, not the full source image. This
+            // is what makes every soil overlay and the painted dirt grid share
+            // the same world-space footprint.
+            var plateSize = new Vector3(fieldSize.x, 0.08f, fieldSize.y);
             var layoutTexture = _matPlotBackground.mainTexture as Texture2D;
-            var layoutAspect = layoutTexture == null ? 1f : (float)layoutTexture.width / layoutTexture.height;
-            // Preserve the authored image aspect while keeping its dirt region
-            // aligned to the full logical field. The current asset is square;
-            // this branch keeps future rectangular layouts predictable.
-            if (layoutAspect > 1f) plateSize.z = plateSize.x / layoutAspect;
-            else if (layoutAspect < 1f) plateSize.x = plateSize.z * layoutAspect;
             plate.transform.localScale = plateSize;
+            if (layoutTexture != null)
+            {
+                // Sample the central dirt region of the authored clearing. The
+                // 10% inset on each side leaves a readable forest rim while
+                // aligning the reference grid to the 16×16 playable field.
+                var crop = FarmIso.ArtDirtCoverage;
+                _matPlotBackground.mainTextureScale = new Vector2(crop, crop);
+                _matPlotBackground.mainTextureOffset = new Vector2((1f - crop) * 0.5f,
+                    (1f - crop) * 0.5f);
+            }
             plate.GetComponent<Renderer>().sharedMaterial = _matPlotBackground;
             Object.Destroy(plate.GetComponent<Collider>());
         }
