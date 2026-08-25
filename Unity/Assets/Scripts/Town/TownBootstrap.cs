@@ -60,6 +60,10 @@ namespace Game.Town
 
             var camFollow = camGo.AddComponent<TownCameraFollow>();
             camFollow.Target = playerGo.transform;
+            // M35: default starting angle, matched to what the project owner settled on
+            // via Q/R during the M34 playtest -- still just a starting point, not a
+            // lock; Q/R keeps working from here same as always.
+            camFollow.Yaw = 45f;
 
             var ctrl = playerGo.AddComponent<TownController>();
             ctrl.Init(built.Buildings, built.Gates, camFollow);

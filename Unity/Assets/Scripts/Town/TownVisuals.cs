@@ -3,40 +3,32 @@ using UnityEngine;
 
 namespace Game.Town
 {
-    /// <summary>Builds the Town blockout at runtime. M33: the project owner's own
-    /// reference image now paints the ground directly (`Resources/Town/Art/
-    /// town_reference_01.png`, loaded at runtime) -- every primitive from M30/M31
-    /// (buildings, trees, roads, plaza) still exists in the exact same layout, but with
-    /// its renderer switched off, so it's collision-only underneath the picture. Hand-
-    /// placed coordinates approximate the image's four districts (Market Row NW,
-    /// Residential NE, Utility/Storage SW, Town Hall + plaza SE) rather than matching
-    /// its pixels exactly. M34 adds a bas-relief layer on top: each building also gets a
-    /// `RoofCap`, a small textured plane cropped from that same reference image
-    /// (`Resources/Town/Art/Roofs/`) at roughly this building's own spot, raised just
-    /// above its (still invisible) roof box -- a real per-building art pass with proper
-    /// walls is still a later milestone; this is a fast stand-in built entirely from the
-    /// one reference image, not final art.</summary>
+    /// <summary>Builds the Town plot at runtime. The project owner's reference image
+    /// paints the ground directly (`Resources/Town/Art/town_reference_01.png`, loaded at
+    /// runtime) -- dirt roads in a cross pattern through forest. Matches §5.5: buildings
+    /// cost materials and a real-time build countdown, so the town legitimately starts
+    /// with nothing actually built, rather than a hardcoded blockout standing in for
+    /// real construction. M36 adds back what M30/M31's removed building blockout was
+    /// really marking: not buildings, but the *plots of land* they'll eventually occupy
+    /// -- flat, walkable, collider-free markers (`TownBuilding`, reused rather than
+    /// renamed -- see its own doc comment) at the same four-district layout as before,
+    /// each reading "not built yet" until a real building-placement system exists.</summary>
     public static class TownVisuals
     {
         const string ReferenceImageResourcePath = "Town/Art/town_reference_01";
-        const string RoofImageResourceDir = "Town/Art/Roofs/";
         const float RoadHalfWidth = 2.5f;
         const float RoadReach = 42f;
         const float ForestRadius = 46f;
 
         static readonly Color RoadColor = new(0.42f, 0.38f, 0.32f);
         static readonly Color GroundColor = new(0.29f, 0.42f, 0.24f);
-        static readonly Color MarketWall = new(0.55f, 0.4f, 0.24f);
-        static readonly Color MarketRoof = new(0.68f, 0.3f, 0.22f);
-        static readonly Color HouseWall = new(0.62f, 0.58f, 0.5f);
-        static readonly Color HouseRoof = new(0.32f, 0.38f, 0.5f);
-        static readonly Color UtilityWall = new(0.4f, 0.38f, 0.36f);
-        static readonly Color UtilityRoof = new(0.35f, 0.28f, 0.2f);
-        static readonly Color HallWall = new(0.5f, 0.52f, 0.58f);
-        static readonly Color HallRoof = new(0.22f, 0.26f, 0.36f);
         static readonly Color TrunkColor = new(0.3f, 0.22f, 0.14f);
         static readonly Color LeafColor = new(0.16f, 0.32f, 0.16f);
         static readonly Color GateColor = new(0.85f, 0.75f, 0.25f);
+        static readonly Color MarketPlotColor = new(0.68f, 0.42f, 0.22f, 0.35f);
+        static readonly Color ResidentialPlotColor = new(0.4f, 0.55f, 0.35f, 0.35f);
+        static readonly Color UtilityPlotColor = new(0.5f, 0.45f, 0.4f, 0.35f);
+        static readonly Color CivicPlotColor = new(0.35f, 0.45f, 0.62f, 0.35f);
 
         public class BuildResult
         {
@@ -54,15 +46,75 @@ namespace Game.Town
             BuildRoads(parent);
             BuildForestRing(parent);
 
-            BuildMarketRow(parent, result.Buildings);
-            BuildResidential(parent, result.Buildings);
-            BuildUtility(parent, result.Buildings);
-            BuildTownHall(parent, result.Buildings);
+            BuildPlots(parent, result.Buildings);
 
             BuildGate(parent, result.Gates, "Path to the Farm", "Farm", new Vector3(-ForestRadius + 4f, 0f, -ForestRadius + 4f));
             BuildGate(parent, result.Gates, "Path to the Dungeon", "Battle", new Vector3(ForestRadius - 4f, 0f, -ForestRadius + 4f));
 
             return result;
+        }
+
+        /// <summary>M36: the four districts from the reference image, as empty,
+        /// walkable plots rather than solid buildings -- same positions/footprints
+        /// M30/M31 used for actual building blockouts, reused here since they already
+        /// approximate the picture's layout reasonably well.</summary>
+        static void BuildPlots(Transform parent, List<TownBuilding> buildings)
+        {
+            var marketNames = new[] { "General Store Plot", "Apothecary Plot", "Weaver's Stall Plot", "Fishmonger Plot", "Trading Post Plot" };
+            var marketStart = new Vector3(-14f, 0f, 14f);
+            for (var i = 0; i < marketNames.Length; i++)
+            {
+                var pos = marketStart + new Vector3(-i * 6.5f, 0f, 0f);
+                buildings.Add(Plot(parent, pos, new Vector2(5f, 5f), MarketPlotColor, TownBuildingType.MarketStall, marketNames[i]));
+            }
+
+            var residentialOrigin = new Vector3(14f, 0f, 30f);
+            for (var i = 0; i < 6; i++)
+            {
+                var col = i % 2;
+                var row = i / 2;
+                var pos = residentialOrigin + new Vector3(col * 11f, 0f, -row * 11f);
+                buildings.Add(Plot(parent, pos, new Vector2(4.5f, 4.5f), ResidentialPlotColor, TownBuildingType.House, $"Cottage Plot {i + 1}"));
+            }
+
+            var utilityNames = new[] { "Storehouse Plot", "Tool Shed Plot", "Grain Barn Plot" };
+            var utilityOrigin = new Vector3(-14f, 0f, -14f);
+            for (var i = 0; i < utilityNames.Length; i++)
+            {
+                var pos = utilityOrigin + new Vector3(-i * 8f, 0f, -(i % 2) * 6f);
+                buildings.Add(Plot(parent, pos, new Vector2(6f, 6f), UtilityPlotColor, TownBuildingType.UtilityShed, utilityNames[i]));
+            }
+            var towerPos = utilityOrigin + new Vector3(6f, 0f, -10f);
+            buildings.Add(Plot(parent, towerPos, new Vector2(3f, 3f), UtilityPlotColor, TownBuildingType.UtilityShed, "Water Tower Plot"));
+
+            var hallPos = new Vector3(16f, 0f, -14f);
+            buildings.Add(Plot(parent, hallPos, new Vector2(9f, 7f), CivicPlotColor, TownBuildingType.TownHall, "Town Hall Plot"));
+        }
+
+        /// <summary>A flat, walkable, translucent rectangle marking an empty buildable
+        /// lot -- collider stripped on purpose (the point of a plot is you can stand on
+        /// it while nothing's built there), positioned just above the ground image so it
+        /// doesn't z-fight with it.</summary>
+        static TownBuilding Plot(Transform parent, Vector3 pos, Vector2 footprint, Color color, TownBuildingType type, string displayName)
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
+            go.name = displayName;
+            Object.DestroyImmediate(go.GetComponent<Collider>()); // plots are walkable, not obstacles.
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = pos + Vector3.up * 0.03f;
+            go.transform.localScale = new Vector3(footprint.x / 10f, 1f, footprint.y / 10f);
+
+            var renderer = go.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent");
+                renderer.material = new Material(shader) { color = color };
+            }
+
+            var tb = go.AddComponent<TownBuilding>();
+            tb.Type = type;
+            tb.DisplayName = displayName;
+            return tb;
         }
 
         static void BuildGroundImage(Transform parent)
@@ -117,122 +169,6 @@ namespace Game.Town
             var leaves = Primitive(PrimitiveType.Sphere, parent, "Tree_Leaves",
                 pos + Vector3.up * 2.2f, new Vector3(2.2f, 2.2f, 2.2f), LeafColor, visible: false);
             leaves.transform.SetParent(trunk.transform, true);
-        }
-
-        static void BuildMarketRow(Transform parent, List<TownBuilding> buildings)
-        {
-            var names = new[] { "General Store", "Apothecary", "Weaver's Stall", "Fishmonger", "Trading Post" };
-            var roofKeys = new[] { "market_general_store", "market_apothecary", "market_weavers_stall", "market_fishmonger", "market_trading_post" };
-            var start = new Vector3(-14f, 0f, 14f);
-            for (var i = 0; i < names.Length; i++)
-            {
-                var pos = start + new Vector3(-i * 6.5f, 0f, 0f);
-                buildings.Add(Building(parent, pos, new Vector3(5f, 3f, 5f),
-                    MarketWall, MarketRoof, TownBuildingType.MarketStall, names[i], roofKeys[i]));
-            }
-        }
-
-        static void BuildResidential(Transform parent, List<TownBuilding> buildings)
-        {
-            var names = new[] { "Cottage", "Cottage", "Cottage", "Cottage", "Cottage", "Cottage" };
-            var origin = new Vector3(14f, 0f, 30f);
-            for (var i = 0; i < names.Length; i++)
-            {
-                var col = i % 2;
-                var row = i / 2;
-                var pos = origin + new Vector3(col * 11f, 0f, -row * 11f);
-                buildings.Add(Building(parent, pos, new Vector3(4.5f, 2.6f, 4.5f),
-                    HouseWall, HouseRoof, TownBuildingType.House, names[i] + " " + (i + 1), $"house_cottage_{i + 1}"));
-            }
-        }
-
-        static void BuildUtility(Transform parent, List<TownBuilding> buildings)
-        {
-            var names = new[] { "Storehouse", "Tool Shed", "Grain Barn" };
-            var roofKeys = new[] { "utility_storehouse", "utility_tool_shed", "utility_grain_barn" };
-            var origin = new Vector3(-14f, 0f, -14f);
-            for (var i = 0; i < names.Length; i++)
-            {
-                var pos = origin + new Vector3(-i * 8f, 0f, -(i % 2) * 6f);
-                buildings.Add(Building(parent, pos, new Vector3(6f, 3.4f, 6f),
-                    UtilityWall, UtilityRoof, TownBuildingType.UtilityShed, names[i], roofKeys[i]));
-            }
-
-            var towerPos = origin + new Vector3(6f, 0f, -10f);
-            var tower = Primitive(PrimitiveType.Cylinder, parent, "WaterTower",
-                towerPos + Vector3.up * 3f, new Vector3(2f, 3f, 2f), UtilityRoof, visible: false);
-            var tb = tower.AddComponent<TownBuilding>();
-            tb.Type = TownBuildingType.UtilityShed;
-            tb.DisplayName = "Water Tower";
-            buildings.Add(tb);
-            RoofCap(parent, tower.transform, towerPos, new Vector3(3f, 6f, 3f), "utility_water_tower");
-        }
-
-        static void BuildTownHall(Transform parent, List<TownBuilding> buildings)
-        {
-            var pos = new Vector3(16f, 0f, -14f);
-            buildings.Add(Building(parent, pos, new Vector3(9f, 5f, 7f),
-                HallWall, HallRoof, TownBuildingType.TownHall, "Town Hall", "town_hall"));
-
-            var plaza = Primitive(PrimitiveType.Cube, parent, "Plaza",
-                pos + new Vector3(0f, -0.02f, 9f), new Vector3(12f, 0.03f, 10f), RoadColor, visible: false);
-            plaza.transform.localScale = new Vector3(12f, 0.03f, 10f);
-
-            var poleBase = pos + new Vector3(0f, 0f, 9f);
-            Primitive(PrimitiveType.Cylinder, parent, "Flagpole",
-                poleBase + Vector3.up * 2.5f, new Vector3(0.15f, 2.5f, 0.15f), new Color(0.6f, 0.6f, 0.6f), visible: false);
-            var flag = Primitive(PrimitiveType.Cube, parent, "Flag",
-                poleBase + new Vector3(0.6f, 4.6f, 0f), new Vector3(1.2f, 0.7f, 0.05f), new Color(0.75f, 0.15f, 0.15f), visible: false);
-        }
-
-        static TownBuilding Building(Transform parent, Vector3 basePos, Vector3 size,
-            Color wall, Color roof, TownBuildingType type, string displayName, string roofImageKey = null)
-        {
-            var body = Primitive(PrimitiveType.Cube, parent, displayName,
-                basePos + Vector3.up * (size.y / 2f), size, wall, visible: false);
-            var roofGo = Primitive(PrimitiveType.Cube, parent, displayName + "_Roof",
-                basePos + Vector3.up * (size.y + 0.3f), new Vector3(size.x * 1.1f, 0.6f, size.z * 1.1f), roof, visible: false);
-            roofGo.transform.SetParent(body.transform, true);
-
-            if (roofImageKey != null)
-                RoofCap(parent, body.transform, basePos, size, roofImageKey);
-
-            var tb = body.AddComponent<TownBuilding>();
-            tb.Type = type;
-            tb.DisplayName = displayName;
-            return tb;
-        }
-
-        /// <summary>M34: a textured plane sitting just above the (invisible) roof box,
-        /// cropped from the reference image at roughly this building's own spot --
-        /// gives a bas-relief "the painted roof pokes up out of the flat ground" look
-        /// without needing real 3D wall geometry, which a single top-down painting has
-        /// no data for anyway (see PROJECT-README's M34 entry). Crop boxes are hand-
-        /// eyeballed against the source image, not pixel-measured -- expect drift.</summary>
-        static void RoofCap(Transform parent, Transform body, Vector3 basePos, Vector3 size, string roofImageKey)
-        {
-            var texture = Resources.Load<Texture2D>(RoofImageResourceDir + roofImageKey);
-            if (texture == null) return; // missing crop -- fail quiet, keep the flat-colour roof box underneath.
-
-            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            go.name = "RoofCap";
-            Object.DestroyImmediate(go.GetComponent<Collider>()); // the roof box already provides collision.
-            // Built against `parent` (the un-scaled scene root), same as every other
-            // Primitive() call -- NOT against `body`, whose own non-uniform localScale
-            // (== the building's size) would otherwise get multiplied into this plane's
-            // scale too if parented to it directly. Reparented to `body` afterward, with
-            // worldPositionStays so Unity compensates the local values for us, purely to
-            // keep the hierarchy tidy under the building it belongs to.
-            go.transform.SetParent(parent, false);
-            go.transform.position = basePos + Vector3.up * (size.y + 0.65f);
-            go.transform.localScale = new Vector3(size.x * 1.1f / 10f, 1f, size.z * 1.1f / 10f);
-            go.transform.SetParent(body, true);
-
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer == null) return;
-            var shader = Shader.Find("Unlit/Transparent") ?? Shader.Find("Unlit/Texture");
-            var mat = new Material(shader) { mainTexture = texture };
-            renderer.material = mat;
         }
 
         static void BuildGate(Transform parent, List<TownGate> gates, string displayName, string targetScene, Vector3 pos)

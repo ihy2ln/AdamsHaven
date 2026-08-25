@@ -1421,6 +1421,45 @@ actually land in `Resources/Battle` and be played.
       `ClipMetadataTests.cs`, a new `clip_melee_walk.mp4`, ComfyUI manifest edits)
       appeared mid-session the same way M33's navigation work did -- left entirely alone
       and excluded from this commit.
+31. **Default camera angle + the town's real design direction, M35-M36.** Two more
+    follow-ups from the same playtest.
+    - **M35: a real starting yaw**, `TownCameraFollow.Yaw = 45f` set in
+      `TownBootstrap.Boot()` -- matched by eye to the angle the project owner had
+      rotated to via M34's Q/R during their playtest, not measured precisely. Still just
+      a starting point; Q/R keeps working from there.
+    - **M36: the town's actual direction, and a near-miss.** While the M35 camera tweak
+      was in progress, `TownVisuals.cs` changed twice more on disk, live, mid-edit --
+      first landing in a broken intermediate state (dead code referencing colour
+      constants that had already been deleted, though `Tools/unity.sh typecheck` still
+      reported clean at that exact moment since the stale compile hadn't been rerun),
+      then settling into a clean rewrite that deleted M30/M31's whole building blockout
+      (Market Row, Residential, Utility, Town Hall) and every M34 roof-crop wiring along
+      with it -- `Build()` now only makes ground + roads + forest ring + the two gates.
+      Caught this mid-edit before building anything further on top of it and asked
+      directly rather than guessing. The project owner confirmed it's real and
+      intentional: **the town is reworking to start as empty dirt with dirt roads, and
+      the player builds it from scratch onto plots of land** -- this is FOUNDATION.md
+      §5.5's actual design (materials + a build countdown per building), not a
+      regression. Asked one more time before touching the file again, given it had
+      already changed three times this session without warning; got a clear go-ahead.
+      **Rebuilt what the removed blockout was really marking**: not buildings, but the
+      *plots* they'll eventually occupy. `TownVisuals.BuildPlots` places the same
+      four-district layout (same positions/footprints M30/M31 used) as flat, translucent,
+      collider-free rectangles -- walkable, not obstacles, reusing `TownBuilding` (not a
+      new parallel type) since its `PromptLine` ("X -- not built yet") already fit an
+      empty-plot reading without changing anything. The M34 roof-crop PNGs stay on disk,
+      unused for now -- ready for whenever a real building-placement system exists to
+      spend them on.
+    - **Verified Town in isolation, not through the shared script.** A second,
+      unrelated concurrent edit (Farm/Battle FMV clip work, still in progress) left
+      `FarmVisuals.cs` in a genuinely broken state (`GameObject`/`Vector3` type-mismatch
+      errors) partway through this milestone, which made `Tools/unity.sh typecheck`
+      fail on Farm's account, not Town's. Confirmed Town's own code was clean by
+      compiling just `Scripts/Data` + `Scripts/Town` + `Scripts/Navigation` directly
+      against Roslyn (bypassing Farm entirely) rather than waiting on someone else's
+      in-progress file. Matches this project's own documented pattern (see M24's
+      "Resolved mid-session" gap) of a mid-session Farm refactor briefly breaking the
+      whole project's compile -- not this session's work, not fixed by it.
 
 ## Roster
 
@@ -1506,6 +1545,7 @@ costs the turn.
 | M30-M32 | Town hub scaffold: new `Game.Town` assembly, blockout matching the reference image (Market Row/Residential/Utility/Town Hall), two gates to Farm/Battle, Camp's exit repointed to Town | *(not yet tagged)* |
 | M33 | Reference image applied as a ground-plane texture (real "nicer graphics" pass); M30-M32's hub-topology assumption corrected -- Town/Home/Battle/Farm are each their own scene, not Town-as-center | *(not yet tagged)* |
 | M34 | Player-rotatable orbit camera (Q/R) with camera-relative movement; per-building roof-crop textures on raised planes (bas-relief, not full 3D) | *(not yet tagged)* |
+| M35-M36 | Default camera yaw; town direction confirmed as build-from-empty-dirt (FOUNDATION.md 5.5) -- building blockout replaced by walkable, collider-free plots at the same four-district layout | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
