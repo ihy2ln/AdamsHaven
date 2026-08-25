@@ -1,5 +1,5 @@
 # Tests
 
-EditMode tests for headless battle logic (`DamageCalculator`, `TargetResolver`,
-pathfinding/jump legality once added). Added starting M3 of the battle vertical slice.
-No Unity scene dependency — these run in the Unity Test Runner without Play Mode.
+EditMode tests for headless battle and farm logic. Farm tests cover real-time and
+battle-count growth, water stalling, fertilizer, town/dungeon legality, harvests,
+town transfers, and obstacle tools. No Unity scene dependency.

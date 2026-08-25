@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "adams-haven-farm": {
+      "command": "python",
+      "args": ["S:/AI/Game/test/AI.Game/Tools/farm_mcp.py"]
+    }
+  }
+}

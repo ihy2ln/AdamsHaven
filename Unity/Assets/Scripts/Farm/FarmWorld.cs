@@ -1,140 +1,62 @@
-using System.Collections.Generic;
-using UnityEngine;
-
 namespace Game.Farm
 {
-    public class FarmPlayerState
+    /// <summary>Unity-facing facade over the presentation-free farm simulation.</summary>
+    public sealed class FarmWorld
     {
-        public int X;
-        public int Y;
-        public int Level = 1;
-        public int Xp;
-
-        static readonly int[] LevelCurve = { 0, 15, 40, 80, 140, 220 };
-
-        public int? XpToNext()
+        public sealed class PlayerView
         {
-            if (Level >= LevelCurve.Length) return null;
-            return LevelCurve[Level];
+            readonly FarmSimulation _simulation;
+
+            public PlayerView(FarmSimulation simulation) => _simulation = simulation;
+
+            public int X => _simulation.State.player.x;
+            public int Y => _simulation.State.player.y;
+            public int FacingX => _simulation.State.player.facingX;
+            public int FacingY => _simulation.State.player.facingY;
+            public int Level => _simulation.State.player.farmLevel;
+            public int Xp => _simulation.State.player.farmXp;
+            public int? XpToNext() => _simulation.XpToNextLevel();
         }
 
-        public bool ApplyXp(int amount, out int levelsGained)
+        public FarmSimulation Simulation { get; }
+        public FarmSaveData SaveData => Simulation.State;
+        public PlayerView Player { get; }
+        public int Width => SaveData.width;
+        public int Height => SaveData.height;
+        public string DisplayName => SaveData.displayName;
+        public int ClearedCount => SaveData.clearedObstacles;
+
+        public FarmWorld(FarmSaveData saveData, IFarmClock clock)
         {
-            levelsGained = 0;
-            Xp += amount;
-            while (true)
-            {
-                var need = XpToNext();
-                if (need == null || Xp < need.Value) break;
-                Xp -= need.Value;
-                Level++;
-                levelsGained++;
-            }
-            return levelsGained > 0;
-        }
-    }
-
-    public class FarmWorld
-    {
-        public int Width { get; }
-        public int Height { get; }
-        public string DisplayName { get; }
-        public FarmPlayerState Player { get; } = new();
-        public int ClearedCount { get; private set; }
-
-        readonly string[,] _tiles;
-        readonly FarmSoilKind[,] _soil;
-        readonly Dictionary<string, FarmObstacleType> _types;
-
-        public FarmWorld()
-        {
-            Width = FarmStarterMap.Width;
-            Height = FarmStarterMap.Height;
-            DisplayName = FarmStarterMap.DisplayName;
-            _tiles = (string[,])FarmStarterMap.Tiles.Clone();
-            _soil = (FarmSoilKind[,])FarmStarterMap.Soil.Clone();
-            _types = new Dictionary<string, FarmObstacleType>();
-            foreach (var t in FarmStarterMap.ObstacleTypes)
-                _types[t.id] = t;
-
-            Player.X = FarmStarterMap.PlayerStart.x;
-            Player.Y = FarmStarterMap.PlayerStart.y;
+            Simulation = new FarmSimulation(FarmStarterContent.CreateCatalog(), saveData, clock);
+            Player = new PlayerView(Simulation);
         }
 
-        public bool InBounds(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height;
-
-        public string GetObstacleId(int x, int y)
-        {
-            if (!InBounds(x, y)) return null;
-            var id = _tiles[y, x];
-            return string.IsNullOrEmpty(id) ? null : id;
-        }
-
-        public FarmObstacleType GetObstacle(int x, int y)
-        {
-            var id = GetObstacleId(x, y);
-            return id != null && _types.TryGetValue(id, out var t) ? t : null;
-        }
-
-        public FarmSoilKind GetSoil(int x, int y) => _soil[y, x];
+        public bool InBounds(int x, int y) => Simulation.InBounds(x, y);
+        public FarmTileState GetTile(int x, int y) => Simulation.GetTile(x, y);
+        public string GetObstacleId(int x, int y) => GetTile(x, y)?.obstacleId;
+        public FarmObstacleType GetObstacle(int x, int y) => FarmObstacleType.FromRule(Simulation.GetObstacleRule(GetTile(x, y)));
+        public FarmSoilKind GetSoil(int x, int y) => GetTile(x, y)?.soil == FarmSoilState.Tilled ? FarmSoilKind.Tilled : FarmSoilKind.Untilled;
+        public bool IsWatered(int x, int y) => GetTile(x, y)?.watered == true;
+        public bool IsFertilized(int x, int y) => !string.IsNullOrEmpty(GetTile(x, y)?.fertilizerId);
+        public bool IsCropReady(int x, int y) => Simulation.IsCropReady(GetTile(x, y));
+        public FarmCropRule GetCrop(int x, int y) => Simulation.GetCropRule(GetTile(x, y));
+        public int GetCropVisualStage(int x, int y) => Simulation.GetCropVisualStage(GetTile(x, y));
+        public string GetGrowthMessage(int x, int y) => Simulation.GrowthMessage(GetTile(x, y));
 
         public bool BlocksMovement(int x, int y)
         {
-            var obs = GetObstacle(x, y);
-            return obs != null && obs.blocksMovement;
+            var rule = Simulation.GetObstacleRule(GetTile(x, y));
+            return rule != null && rule.BlocksMovement;
         }
 
-        public bool TryMove(int dx, int dy)
-        {
-            var nx = Player.X + dx;
-            var ny = Player.Y + dy;
-            if (!InBounds(nx, ny) || BlocksMovement(nx, ny)) return false;
-            Player.X = nx;
-            Player.Y = ny;
-            return true;
-        }
-
-        public bool CanClear(int x, int y, out string reason)
-        {
-            var obs = GetObstacle(x, y);
-            if (obs == null)
-            {
-                reason = "Nothing to clear.";
-                return false;
-            }
-            if (Player.Level < obs.requiredLevel)
-            {
-                reason = $"Need Farm Lv.{obs.requiredLevel} (you are Lv.{Player.Level}).";
-                return false;
-            }
-            reason = $"Clear with {obs.tool}.";
-            return true;
-        }
-
-        public bool TryClear(int x, int y, out FarmObstacleType cleared, out int xpGained, out int levelsGained, out string message)
-        {
-            cleared = null;
-            xpGained = 0;
-            levelsGained = 0;
-            if (!CanClear(x, y, out message)) return false;
-
-            var id = GetObstacleId(x, y);
-            cleared = _types[id];
-            _tiles[y, x] = "";
-            ClearedCount++;
-            xpGained = cleared.xp;
-            Player.ApplyXp(xpGained, out levelsGained);
-            message = $"Cleared {cleared.label} (+{xpGained} XP).";
-            return true;
-        }
-
-        public int RemainingObstacles()
-        {
-            var n = 0;
-            for (var y = 0; y < Height; y++)
-            for (var x = 0; x < Width; x++)
-                if (!string.IsNullOrEmpty(_tiles[y, x])) n++;
-            return n;
-        }
+        public FarmActionResult Move(int dx, int dy) => Simulation.TryMove(dx, dy);
+        public FarmActionResult UseTool(int x, int y, FarmTool tool) => Simulation.UseTool(x, y, tool);
+        public FarmActionResult Plant(int x, int y, string cropId) => Simulation.Plant(x, y, cropId);
+        public FarmActionResult Fertilize(int x, int y, string fertilizerItemId) => Simulation.ApplyFertilizer(x, y, fertilizerItemId);
+        public FarmActionResult Harvest(int x, int y) => Simulation.Harvest(x, y);
+        public FarmActionResult ApplyBattle(FarmBattleReport report) => Simulation.ApplyBattleReport(report);
+        public int RemainingObstacles() => Simulation.RemainingObstacles();
+        public int GetItemCount(string itemId) => Simulation.GetItemCount(itemId);
     }
 }

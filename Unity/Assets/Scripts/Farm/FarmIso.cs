@@ -2,40 +2,35 @@ using UnityEngine;
 
 namespace Game.Farm
 {
-    /// <summary>2.5D isometric helpers tuned for a tiny HD-pixel aesthetic pass.</summary>
+    /// <summary>Top-down grid helpers for the authored 16×16 farm presentation.</summary>
     public static class FarmIso
     {
         public const float TileSize = 1.4f;
-        public const float TileHeight = 0.22f;
+        public const float TileHeight = 0.12f;
 
-        public static Vector3 GridToWorld(int x, int y, float yOffset = 0f)
+        public static Vector3 GridToWorld(float x, float y, float yOffset = 0f)
         {
-            var wx = (x - y) * (TileSize * 0.5f);
-            var wz = (x + y) * (TileSize * 0.5f);
-            return new Vector3(wx, yOffset, wz);
+            return new Vector3(x * TileSize, yOffset, y * TileSize);
         }
 
         public static Vector2Int WorldToGrid(Vector3 world)
         {
-            var a = world.x / (TileSize * 0.5f);
-            var b = world.z / (TileSize * 0.5f);
-            var x = Mathf.RoundToInt((a + b) * 0.5f);
-            var y = Mathf.RoundToInt((b - a) * 0.5f);
-            return new Vector2Int(x, y);
+            return new Vector2Int(
+                Mathf.RoundToInt(world.x / TileSize),
+                Mathf.RoundToInt(world.z / TileSize));
         }
 
-        public static void ApplyAestheticCamera(Camera cam, Vector3 lookAt)
+        public static void ApplyAestheticCamera(Camera cam, Vector3 lookAt, int width, int height)
         {
             cam.orthographic = true;
-            // Tight frame for 2×2 so pixels / silhouettes read clearly
-            cam.orthographicSize = 2.55f;
-            cam.transform.rotation = Quaternion.Euler(33f, 45f, 0f);
-            cam.transform.position = lookAt + cam.transform.rotation * new Vector3(0f, 0.15f, -18f);
+            cam.orthographicSize = Mathf.Max(4.4f, Mathf.Max(width, height) * TileSize * 0.68f);
+            cam.transform.rotation = Quaternion.Euler(72f, 0f, 0f);
+            cam.transform.position = lookAt - cam.transform.forward * 18f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             // Soft dusk sky — anime/JRPG field vibe
             cam.backgroundColor = new Color(0.16f, 0.14f, 0.28f);
             cam.nearClipPlane = 0.05f;
-            cam.farClipPlane = 60f;
+            cam.farClipPlane = 80f;
             cam.allowMSAA = false; // keep edges chunky like HD pixel
         }
 
@@ -64,6 +59,31 @@ namespace Game.Farm
     /// <summary>Point-filtered pixel textures for HD-pixel material look.</summary>
     public static class FarmPixelArt
     {
+        public static Texture2D LoadTexture(string resourcePath)
+        {
+            return Resources.Load<Texture2D>(resourcePath);
+        }
+
+        public static Material MakeTextureMat(Texture2D texture, Color fallback)
+        {
+            if (texture == null) return MakeFlatPixel(fallback);
+            var shader = Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
+            var material = new Material(shader) { mainTexture = texture };
+            if (material.HasProperty("_Color")) material.color = Color.white;
+            if (material.HasProperty("_Glossiness")) material.SetFloat("_Glossiness", 0f);
+            return material;
+        }
+
+        public static Material MakeKeyedSpriteMat(Texture2D texture, Color fallback)
+        {
+            if (texture == null) return MakeFlatPixel(fallback);
+            var shader = Shader.Find("Game/Farm/WhiteKey") ?? Shader.Find("Sprites/Default");
+            var material = new Material(shader) { mainTexture = texture };
+            if (material.HasProperty("_Color")) material.color = Color.white;
+            if (material.HasProperty("_Cutoff")) material.SetFloat("_Cutoff", 0.92f);
+            return material;
+        }
+
         public static Material MakePixelMat(Color a, Color b, int size = 16, float checker = 0.35f)
         {
             var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)

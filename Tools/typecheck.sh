@@ -13,7 +13,7 @@
 #
 # What it proves, and what it does not:
 #   DOES     -- everything compiles: no syntax errors, no missing members, no bad types,
-#               no wrong overloads, across Game.Data + Game.Battle + Game.Tests.
+#               no wrong overloads, across Game.Data + Game.Battle + Game.Farm + Game.Tests.
 #   DOES NOT -- run a single test. Assertions can still fail at runtime, and anything
 #               needing Resources/ or a live scene is untouched. Still run
 #               `-batchmode -runTests` once Unity is closed.
@@ -84,8 +84,8 @@ RSP="$OUT_DIR/build.rsp"
 
   # Assembly-CSharp and Assembly-CSharp-Editor are deliberately excluded: the Editor
   # assembly needs UnityEditor.dll and a pile of editor-only references, and none of it
-  # is gameplay code. The three asmdef'd assemblies below are what actually ships.
-  for dir in "$PROJECT/Assets/Scripts/Data" "$PROJECT/Assets/Scripts/Battle" "$PROJECT/Assets/Tests"; do
+  # is gameplay code. The asmdef'd gameplay/test assemblies below are compiled together.
+  for dir in "$PROJECT/Assets/Scripts/Data" "$PROJECT/Assets/Scripts/Battle" "$PROJECT/Assets/Scripts/Farm" "$PROJECT/Assets/Tests"; do
     while IFS= read -r src; do echo "\"$(winpath "$src")\""; done < <(find "$dir" -name '*.cs')
   done
 } > "$RSP"
@@ -99,5 +99,5 @@ if [ -n "$errors" ]; then
   exit 1
 fi
 
-echo "typecheck: clean -- Game.Data + Game.Battle + Game.Tests all compile."
+echo "typecheck: clean -- Game.Data + Game.Battle + Game.Farm + Game.Tests all compile."
 echo "typecheck: this does NOT run tests. Run -batchmode -runTests once Unity is closed."
