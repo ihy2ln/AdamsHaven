@@ -1297,6 +1297,48 @@ by hand all along -- deliberately has no `build` subcommand; see item 26 below f
       Settings, breaking every `SceneManager.LoadScene("Town")` call until someone
       notices. `TownSceneBuilder.cs` *appends* instead, correctly -- but that only
       protects the direction Town runs in, not the reverse.
+29. **Reference image as a ground-plane overlay -- M33.** Project-owner request:
+    "use the picture as a graphical overlay, having nicer graphics" -- the same reference
+    image from M30, now applied directly rather than just used as a layout guide. Found
+    the actual source file at
+    `S:\AI\ComfyUI_windows_portable\ComfyUI\output\Lonecats Simple Krea2\2026-08-24-193329_...png`
+    (copied a few other candidates first that turned out wrong -- a street-level plaza
+    scene, and an unrelated personal photo in a folder literally named "reference,"
+    both disregarded) and copied it into
+    `Assets/Resources/Town/Art/town_reference_01.png`, with a hand-written `.meta`
+    mirroring Farm's own art-import settings (`textureType: 0`/Default, not Sprite --
+    matters because `Resources.Load<Texture2D>` can come back null against a
+    Sprite-typed import) since Unity wasn't available to import it interactively at the
+    time.
+    - **Chosen approach: ground-plane texture, not per-building sprites or a locked
+      backdrop** -- fastest path to "nicer graphics," and reversible once real modular
+      art exists. `TownVisuals.BuildGroundImage` replaces the old flat-colour ground
+      plane with one textured by the reference image, scaled to the same footprint the
+      buildings/forest ring already use (minor stretch from the source's portrait aspect
+      ratio, accepted rather than solved -- see the class doc comment).
+    - **Every other primitive from M30/M31 stays exactly where it was, just invisible.**
+      `Primitive()` gained a `visible` flag (default true) that disables the renderer
+      but leaves the collider -- so buildings/trees/roads/plaza are still real,
+      walkable, collidable shapes, they're just not drawn anymore, since the picture
+      already shows all of them painted in. Gates stay visible (`visible` defaults
+      true there): they're a Town-only affordance the reference image never depicted,
+      so they still need to read as real interactive objects, not architecture.
+    - **A second collision this session, handled better than the first.** While this was
+      in progress, a large unrelated commit (`0ce39b6`, "add shared camp travel across
+      locations") landed independently -- a project-wide `HavenNavigation` overlay
+      (`Scripts/Navigation/`, `DontDestroyOnLoad`, a TAB-triggered travel menu across
+      Camp/Home/Farm/Town/Battle) plus two new scenes, `Camp.unity` and `Home.unity`.
+      It touched Town's own files too (`Game.Town.asmdef` gained a reference to the new
+      `Game.Navigation` assembly; `TownController.Update` now early-outs on
+      `HavenNavigation.IsOpen` so walking doesn't fight the travel menu) -- but as real,
+      clean, working integration, not an overwrite, and it landed as its own separate
+      commit rather than sitting uncommitted in files this session was also touching.
+      Confirmed with the project owner immediately: **Town, Home, Battle, and Farm are
+      each their own hub/scene** (not a Town-is-the-hub-and-others-live-inside-it
+      structure as this session had been assuming since M32) -- work for now stays
+      scoped to Town's own foundation, not touching the other scenes.
+      `Tools/typecheck.sh` extended to also cover `Scripts/Navigation`, since
+      `Game.Town` now has a real compile-time dependency on it.
 
 ## Roster
 
@@ -1380,6 +1422,7 @@ costs the turn.
 | M28 | MCP server (`com.coplaydev.unity-mcp`) + `Tools/unity.sh` CLI -- project-wide tooling, not a battle-scene feature | *(not yet tagged)* |
 | M29 | Battle<->farm transition, both directions: Camp's "Leave dungeon" loads Farm.unity (committed); Farm's "Return to Camp" loads Battle.unity (written, uncommitted -- see "Known gaps") | *(not yet tagged)* |
 | M30-M32 | Town hub scaffold: new `Game.Town` assembly, blockout matching the reference image (Market Row/Residential/Utility/Town Hall), two gates to Farm/Battle, Camp's exit repointed to Town | *(not yet tagged)* |
+| M33 | Reference image applied as a ground-plane texture (real "nicer graphics" pass); M30-M32's hub-topology assumption corrected -- Town/Home/Battle/Farm are each their own scene, not Town-as-center | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That
