@@ -18,6 +18,7 @@ namespace Game.Farm
         ObstacleCleared,
         Planted,
         Harvested,
+        GatherBonus,
         BattleApplied,
         ExportedToTown,
         Failed

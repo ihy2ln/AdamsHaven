@@ -132,6 +132,33 @@ namespace Game.Tests
             Assert.That(simulation.GetItemCount("fiber"), Is.EqualTo(2));
         }
 
+        [Test]
+        public void GatheringPerformanceAddsBonusMaterialsThroughSimulationInventory()
+        {
+            var clock = new FakeClock { NowUnixSeconds = 7_000 };
+            var simulation = CreateSimulation(clock, 0, 3);
+            simulation.State.player.farmLevel = 2;
+            var cleared = simulation.UseTool(1, 3, FarmTool.Scythe);
+
+            Assert.That(cleared.Succeeded, Is.True);
+            var bonus = simulation.ApplyGatherBonus(cleared.ItemId, 3, cleared.Position);
+
+            Assert.That(bonus.Succeeded, Is.True);
+            Assert.That(bonus.Code, Is.EqualTo(FarmActionCode.GatherBonus));
+            Assert.That(simulation.GetItemCount("fiber"), Is.EqualTo(5));
+        }
+
+        [Test]
+        public void SwipeGatheringUnlocksAtFarmLevelThreeAndRewardsPerformance()
+        {
+            Assert.That(FarmGatherRules.ModeForLevel(1), Is.EqualTo(FarmGatherMode.PrecisionTap));
+            Assert.That(FarmGatherRules.ModeForLevel(2), Is.EqualTo(FarmGatherMode.PrecisionTap));
+            Assert.That(FarmGatherRules.ModeForLevel(3), Is.EqualTo(FarmGatherMode.Swipe));
+            Assert.That(FarmGatherRules.BonusForScore(0.39f), Is.Zero);
+            Assert.That(FarmGatherRules.BonusForScore(0.65f), Is.EqualTo(2));
+            Assert.That(FarmGatherRules.BonusForScore(0.95f), Is.EqualTo(3));
+        }
+
         static FarmSimulation CreateSimulation(FakeClock clock, int playerX, int playerY)
         {
             var state = FarmStarterContent.CreateNewGame();

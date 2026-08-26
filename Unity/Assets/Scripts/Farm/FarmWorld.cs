@@ -55,6 +55,8 @@ namespace Game.Farm
         public FarmActionResult Plant(int x, int y, string cropId) => Simulation.Plant(x, y, cropId);
         public FarmActionResult Fertilize(int x, int y, string fertilizerItemId) => Simulation.ApplyFertilizer(x, y, fertilizerItemId);
         public FarmActionResult Harvest(int x, int y) => Simulation.Harvest(x, y);
+        public FarmActionResult ApplyGatherBonus(string itemId, int quantity, FarmPosition position)
+            => Simulation.ApplyGatherBonus(itemId, quantity, position);
         public FarmActionResult ApplyBattle(FarmBattleReport report) => Simulation.ApplyBattleReport(report);
         public int RemainingObstacles() => Simulation.RemainingObstacles();
         public int GetItemCount(string itemId) => Simulation.GetItemCount(itemId);

@@ -14,6 +14,7 @@ namespace Game.Farm
         public const float ArtDirtCoverageY = 0.60f;
         public const float ArtDirtOffsetX = 0.15f;
         public const float ArtDirtOffsetY = 0.20f;
+        public const float ScrollingOrthoSize = 4.6f;
 
         public static Vector2 FieldWorldSize(int width, int height)
         {
@@ -38,19 +39,24 @@ namespace Game.Farm
                 Mathf.RoundToInt(world.z / TileSize));
         }
 
-        public static void ApplyAestheticCamera(Camera cam, Vector3 lookAt, int width, int height)
+        public static void ApplyFlatScrollingCamera(Camera cam, Vector3 lookAt)
         {
             cam.orthographic = true;
-            cam.orthographicSize = Mathf.Max(4.4f, Mathf.Max(width, height) * TileSize * 0.68f);
-            cam.transform.rotation = Quaternion.Euler(72f, 0f, 0f);
+            cam.orthographicSize = ScrollingOrthoSize;
+            // Near top-down preserves a little sprite height for the 2.5D look,
+            // while removing the old diorama perspective and fixed full-map view.
+            cam.transform.rotation = Quaternion.Euler(80f, 0f, 0f);
             cam.transform.position = lookAt - cam.transform.forward * 18f;
             cam.clearFlags = CameraClearFlags.SolidColor;
-            // Soft dusk sky — anime/JRPG field vibe
-            cam.backgroundColor = new Color(0.16f, 0.14f, 0.28f);
+            cam.backgroundColor = new Color(0.10f, 0.16f, 0.12f);
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 80f;
-            cam.allowMSAA = false; // keep edges chunky like HD pixel
+            cam.allowMSAA = false;
         }
+
+        // Source-compatible entry point for older scene builders.
+        public static void ApplyAestheticCamera(Camera cam, Vector3 lookAt, int width, int height)
+            => ApplyFlatScrollingCamera(cam, lookAt);
 
         /// <summary>
         /// Wide exploration framing for the larger forest map (roadmap item 3).

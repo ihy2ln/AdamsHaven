@@ -40,16 +40,18 @@ namespace Game.Farm
             var save = world.SaveData;
             var player = world.Player;
 
-            GUI.Box(new Rect(12, 12, 350, 168), GUIContent.none);
+            GUI.Box(new Rect(12, 12, 370, 190), GUIContent.none);
             GUI.Label(new Rect(24, 18, 330, 24), "ADAMS HAVEN  ·  FARM", _title);
             GUI.Label(new Rect(24, 44, 320, 20), $"{world.DisplayName}  ·  {world.Width}×{world.Height}  ·  Battles {save.totalBattles}", _body);
             GUI.Label(new Rect(24, 66, 320, 20), $"Farm Lv {player.Level}  ·  XP {FormatXp(player)}  ·  Harvests {save.totalHarvests}", _body);
             GUI.Label(new Rect(24, 88, 320, 20), $"Tool: {FarmController.FormatTool(_controller.SelectedTool)}  [1–5]", _body);
             GUI.Label(new Rect(24, 110, 320, 20), $"Seed: {_controller.SelectedCropName} ×{_controller.SelectedSeedCount}  [Q]", _body);
             GUI.Label(new Rect(24, 132, 320, 20), $"Fertilizer ×{_controller.FertilizerCount}  ·  Obstacles {world.RemainingObstacles()}", _small);
-            GUI.Label(new Rect(24, 150, 330, 20), "E tool  ·  P plant  ·  F fertilize  ·  R harvest  ·  B battle  ·  TAB travel", _small);
+            GUI.Label(new Rect(24, 150, 340, 20), _controller.GatherModeLabel, _small);
+            GUI.Label(new Rect(24, 168, 340, 20), "E tool/gather  ·  P plant  ·  F fertilize  ·  R harvest  ·  B battle  ·  TAB travel", _small);
 
-            if (GUI.Button(new Rect(12, 188, 170, 28), "ENTER BATTLE", _button)) _controller.EnterBattle();
+            if (!_controller.IsGathering && GUI.Button(new Rect(12, 210, 170, 28), "ENTER BATTLE", _button))
+                _controller.EnterBattle();
 
             var messageStyle = _controller.StatusKind switch
             {
@@ -61,7 +63,7 @@ namespace Game.Farm
             GUI.Box(new Rect(12, Screen.height - 72, Mathf.Min(580, Screen.width - 24), 48), GUIContent.none);
             GUI.Label(new Rect(24, Screen.height - 62, Mathf.Min(556, Screen.width - 48), 34), _controller.LastMessage, messageStyle);
 
-            DrawTouchControls();
+            if (!_controller.IsGathering) DrawTouchControls();
         }
 
         void DrawTouchControls()
@@ -80,7 +82,7 @@ namespace Game.Farm
             if (GUI.Button(new Rect(actionX, padY + 34, 108, 30), "CHANGE SEED", _button)) _controller.CycleSeed();
             if (GUI.Button(new Rect(actionX, padY + 68, 108, 30), "FERTILIZE", _button)) _controller.ApplyFertilizer();
             if (GUI.Button(new Rect(actionX, padY + 102, 108, 30), "PLANT", _button)) _controller.PlantSelectedSeed();
-            if (GUI.Button(new Rect(actionX, padY + 136, 108, 30), "HARVEST", _button)) _controller.Harvest();
+            if (GUI.Button(new Rect(actionX, padY + 136, 108, 30), "GATHER", _button)) _controller.Harvest();
         }
 
         static string FormatXp(FarmWorld.PlayerView player)

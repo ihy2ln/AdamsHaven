@@ -20,20 +20,23 @@ namespace Game.Farm
         public FarmWorld World { get; private set; }
         public FarmTool SelectedTool { get; private set; } = FarmTool.Hoe;
         public string SelectedCropId { get; private set; } = CropOrder[0];
-        public string LastMessage { get; private set; } = "Till, fertilize, plant, and water. Crops grow with time or battles.";
+        public string LastMessage { get; private set; } = "Farm the clearing, then complete a short skill challenge to gather resources.";
         public string StatusKind { get; private set; } = "info";
 
         FarmVisuals _visuals;
         Camera _camera;
         FarmSaveRepository _saves;
+        FarmGatherMinigame _gatherMinigame;
         float _nextGrowthRefresh;
 
-        public void Init(FarmWorld world, FarmVisuals visuals, Camera camera, FarmSaveRepository saves)
+        public void Init(FarmWorld world, FarmVisuals visuals, Camera camera, FarmSaveRepository saves,
+            FarmGatherMinigame gatherMinigame)
         {
             World = world;
             _visuals = visuals;
             _camera = camera;
             _saves = saves;
+            _gatherMinigame = gatherMinigame;
         }
 
         void Update()
@@ -42,6 +45,7 @@ namespace Game.Farm
             // independent from the navigation assembly so Farm remains a clean
             // simulation slice with no Town/Home/Battle code dependency.
             if (World == null || Time.timeScale <= 0f) return;
+            if (_gatherMinigame != null && _gatherMinigame.IsActive) return;
             HandleKeyboard();
             HandlePointer();
             if (Time.unscaledTime >= _nextGrowthRefresh)
@@ -90,11 +94,11 @@ namespace Game.Farm
             var distance = Mathf.Abs(cell.x - World.Player.X) + Mathf.Abs(cell.y - World.Player.Y);
             if (distance == 0)
             {
-                if (World.IsCropReady(cell.x, cell.y)) Apply(World.Harvest(cell.x, cell.y));
-                else Apply(World.UseTool(cell.x, cell.y, SelectedTool));
+                if (World.IsCropReady(cell.x, cell.y)) HarvestAt(cell);
+                else UseToolAt(cell);
             }
             else if (distance == 1 && World.GetObstacle(cell.x, cell.y) != null)
-                Apply(World.UseTool(cell.x, cell.y, SelectedTool));
+                UseToolAt(cell);
             else if (distance == 1)
                 Move(cell.x - World.Player.X, cell.y - World.Player.Y);
             else Push("Move closer to interact with that tile.", "warn");
@@ -177,6 +181,12 @@ namespace Game.Farm
         }
 
         public int FertilizerCount => World == null ? 0 : World.GetItemCount("fertilizer_basic");
+        public bool IsGathering => _gatherMinigame != null && _gatherMinigame.IsActive;
+
+        public string GatherModeLabel => World != null &&
+            FarmGatherRules.ModeForLevel(World.Player.Level) == FarmGatherMode.Swipe
+                ? "Swipe gathering unlocked"
+                : "Precision gathering · swipe unlocks at Lv." + FarmGatherRules.SwipeUnlockLevel;
 
         public void SelectTool(FarmTool tool)
         {
@@ -200,7 +210,7 @@ namespace Game.Farm
         public void UseSelectedTool()
         {
             var target = FacingTile();
-            Apply(World.UseTool(target.x, target.y, SelectedTool));
+            UseToolAt(target);
         }
 
         public void PlantSelectedSeed()
@@ -218,7 +228,77 @@ namespace Game.Farm
         public void Harvest()
         {
             var target = FacingTile();
-            Apply(World.Harvest(target.x, target.y));
+            HarvestAt(target);
+        }
+
+        void UseToolAt(Vector2Int target)
+        {
+            var obstacle = World.GetObstacle(target.x, target.y);
+            if (obstacle == null)
+            {
+                Apply(World.UseTool(target.x, target.y, SelectedTool));
+                return;
+            }
+
+            var selectedToolId = SelectedTool.ToString().ToLowerInvariant();
+            if (!string.Equals(obstacle.tool, selectedToolId, System.StringComparison.Ordinal) ||
+                World.Player.Level < obstacle.requiredLevel)
+            {
+                // Let the simulation produce its authoritative tool/level error.
+                Apply(World.UseTool(target.x, target.y, SelectedTool));
+                return;
+            }
+
+            BeginGather("Clear " + obstacle.label, target,
+                () => World.UseTool(target.x, target.y, SelectedTool));
+        }
+
+        void HarvestAt(Vector2Int target)
+        {
+            if (!World.IsCropReady(target.x, target.y))
+            {
+                Apply(World.Harvest(target.x, target.y));
+                return;
+            }
+
+            var crop = World.GetCrop(target.x, target.y);
+            BeginGather("Harvest " + (crop == null ? "crop" : crop.DisplayName), target,
+                () => World.Harvest(target.x, target.y));
+        }
+
+        void BeginGather(string title, Vector2Int target, System.Func<FarmActionResult> applyAction)
+        {
+            if (_gatherMinigame == null)
+            {
+                Apply(applyAction());
+                return;
+            }
+
+            Push(title + " — complete the " +
+                (FarmGatherRules.ModeForLevel(World.Player.Level) == FarmGatherMode.Swipe ? "swipe" : "precision") +
+                " challenge.", "info");
+            _visuals.SetHover(target);
+            _gatherMinigame.Begin(title, World.Player.Level,
+                outcome => CompleteGather(outcome, applyAction));
+        }
+
+        void CompleteGather(FarmGatherOutcome outcome, System.Func<FarmActionResult> applyAction)
+        {
+            if (!outcome.Succeeded)
+            {
+                Push("Gathering attempt missed. The resource is still here — try again.", "warn");
+                return;
+            }
+
+            var result = applyAction();
+            Apply(result);
+            if (!result.Succeeded || result.Quantity <= 0 || string.IsNullOrEmpty(result.ItemId)) return;
+
+            var bonus = World.ApplyGatherBonus(result.ItemId, outcome.BonusMaterials, result.Position);
+            if (!bonus.Succeeded) return;
+            Save();
+            Push(result.Message + " Skill bonus: +" + bonus.Quantity + " " +
+                World.Simulation.GetItemDisplayName(bonus.ItemId) + ".", "ok");
         }
 
         public void SimulateBattleCompletion()

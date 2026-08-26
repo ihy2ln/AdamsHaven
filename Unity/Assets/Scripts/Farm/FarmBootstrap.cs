@@ -36,18 +36,25 @@ namespace Game.Farm
             visualsGo.transform.SetParent(transform, false);
             var visuals = visualsGo.AddComponent<FarmVisuals>();
             visuals.Build(world);
-            FarmIso.ApplyAestheticCamera(cam, visuals.MapCenter, world.Width, world.Height);
+            FarmIso.ApplyFlatScrollingCamera(cam, visuals.MapCenter);
+            var cameraFollow = camGo.GetComponent<FarmCameraFollow>();
+            if (cameraFollow == null) cameraFollow = camGo.AddComponent<FarmCameraFollow>();
+            cameraFollow.Init(visuals.PlayerTransform, world.Width, world.Height);
+
+            var minigameGo = new GameObject("FarmGatherMinigame");
+            minigameGo.transform.SetParent(transform, false);
+            var gatherMinigame = minigameGo.AddComponent<FarmGatherMinigame>();
 
             var ctrlGo = new GameObject("FarmController");
             ctrlGo.transform.SetParent(transform, false);
             var ctrl = ctrlGo.AddComponent<FarmController>();
-            ctrl.Init(world, visuals, cam, saves);
+            ctrl.Init(world, visuals, cam, saves, gatherMinigame);
 
             var hudGo = new GameObject("FarmHud");
             hudGo.transform.SetParent(transform, false);
             hudGo.AddComponent<FarmHud>().Init(ctrl);
 
-            Debug.Log("[Adams Haven] 10×10 farm hub booted: real-time/battle growth, fertilizer, inventory, saves, and Battle scene travel.");
+            Debug.Log("[Adams Haven] 10×10 flat 2.5D farm booted: scrolling camera, skill gathering, crops, saves, and Battle travel.");
         }
     }
 }

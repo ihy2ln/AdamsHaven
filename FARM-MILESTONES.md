@@ -10,12 +10,13 @@ its tests/docs are updated.
 | ID | Outcome | Status | Depends on |
 |---|---|---|---|
 | F0 | Farm/battle boundary and code ownership | Done | — |
-| F1 | Playable 16×16 top-down clearing | Done | F0 |
+| F1 | Playable 10×10 top-down clearing | Done | F0 |
 | F2 | Complete first crop loop | Done | F1 |
 | F3 | Farm progression, obstacles, and local save | Done | F2 |
 | F4 | Farm presentation and authored flora pass | In progress | F1 |
 | F4.1 | Grid and ground foundation lock | In progress | F4 |
-| F5 | Real battle-completion growth bridge | Next | F3, F4.1 |
+| F4.2 | Flat 2.5D scrolling view and skill gathering | In progress | F4.1 |
+| F5 | Real battle-completion growth bridge | Next | F3, F4.2 |
 | F6 | Market and Kitchen handoff loop | Planned | F3, F5 |
 | F7 | Authored crop/content catalog | Planned | F2, F6 |
 | F8 | Farm rules decision pass | Planned | F3, F7 |
@@ -38,7 +39,7 @@ controller boundary, not a code dependency on another gameplay assembly.
 
 ### F1 — Playable clearing — Done
 
-Deliver the top-down 16×16 authored clearing, movement, camera, tile targeting,
+Deliver the top-down 10×10 authored clearing, movement, camera, tile targeting,
 obstacle collision, and farm-only HUD.
 
 **Exit gate:** a player can open `Farm.unity`, move around the whole field, and
@@ -76,13 +77,27 @@ farm scene at a useful scale.
 Lock one coordinate contract between the authored clearing image and the
 interactive farm. The playable field bounds, map plate, tile colliders, soil
 overlays, hover marker, and player placement must all derive from the same
-16×16 world-space field instead of independent visual multipliers. This is a
+10×10 world-space field instead of independent visual multipliers. This is a
 foundation correction inside F4, not a new crop or battle feature.
 
 **Exit gate:** the four corner cells and center cell align with the authored dirt
 field; a tilled overlay fills exactly one interaction cell; pointer targeting,
 keyboard movement, hover, and save/reload agree on the same cell coordinates;
 the Farm scene has no visible tan/grey placeholder squares.
+
+### F4.2 — Flat 2.5D view and skill gathering — In progress
+
+Replace the fixed diorama framing with a flat, near-top-down orthographic camera
+that scrolls with the player while keeping the existing tile simulation and crop
+loop intact. Harvesting mature crops and clearing resource obstacles starts a
+short skill challenge before the simulation action resolves. Farm levels 1–2 use
+precision timing; level 3 unlocks mouse/touch swipe gathering. Performance grants
+bonus produce or materials through the Farm inventory boundary.
+
+**Exit gate:** the player can traverse the full clearing with a smoothly scrolling
+camera; crops, rocks, trees, and plants remain readable; harvest/clearing cannot
+skip the challenge through keyboard, pointer, or touch controls; successful play
+grants deterministic bonus materials; and Farm retains no Town/Battle code dependency.
 
 ### F5 — Real battle bridge — Next
 

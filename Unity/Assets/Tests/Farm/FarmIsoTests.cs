@@ -45,5 +45,13 @@ namespace Game.Tests
             Assert.That(Game.Farm.FarmIso.ArtDirtOffsetX, Is.GreaterThanOrEqualTo(0f));
             Assert.That(Game.Farm.FarmIso.ArtDirtOffsetY, Is.GreaterThanOrEqualTo(0f));
         }
+
+        [Test]
+        public void ScrollingCameraShowsOnlyPartOfTheTenByTenField()
+        {
+            var fieldHeight = Game.Farm.FarmIso.FieldWorldSize(10, 10).y;
+
+            Assert.That(Game.Farm.FarmIso.ScrollingOrthoSize * 2f, Is.LessThan(fieldHeight));
+        }
     }
 }

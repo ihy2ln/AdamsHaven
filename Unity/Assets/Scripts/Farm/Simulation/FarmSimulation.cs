@@ -273,6 +273,24 @@ namespace Game.Farm
                 quantity: quantity);
         }
 
+        /// <summary>
+        /// Applies a presentation-earned gathering bonus after a successful
+        /// harvest or obstacle clear. The minigame decides performance; the
+        /// simulation remains the only owner of inventory mutation.
+        /// </summary>
+        public FarmActionResult ApplyGatherBonus(string itemId, int quantity, FarmPosition position)
+        {
+            if (string.IsNullOrEmpty(itemId) || quantity <= 0)
+                return FarmActionResult.Fail("No gathering bonus was earned.", position);
+            AddItem(itemId, quantity);
+            return FarmActionResult.Success(
+                FarmActionCode.GatherBonus,
+                "Gathering skill added " + quantity + " " + GetItemDisplayName(itemId) + ".",
+                position,
+                itemId: itemId,
+                quantity: quantity);
+        }
+
         public FarmActionResult ApplyBattleReport(FarmBattleReport report)
         {
             if (report == null) return FarmActionResult.Fail("Battle report was missing.", PlayerPosition());

@@ -99,31 +99,11 @@ namespace Game.Farm
 
         void BuildAtmosphere()
         {
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.ExponentialSquared;
-            RenderSettings.fogColor = new Color(0.42f, 0.28f, 0.38f);
-            RenderSettings.fogDensity = 0.045f;
+            // The flat 2.5D view uses authored/unlit art. Fog and spot lighting
+            // made distant rows muddy and fought the scrolling camera.
+            RenderSettings.fog = false;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-            RenderSettings.ambientLight = new Color(0.55f, 0.48f, 0.62f);
-
-            var sun = new GameObject("Sun").AddComponent<Light>();
-            sun.type = LightType.Directional;
-            sun.color = new Color(1f, 0.78f, 0.52f);
-            sun.intensity = 0.85f;
-            sun.shadows = LightShadows.None; // flatter, more pixel/anime
-            sun.transform.rotation = Quaternion.Euler(35f, -40f, 0f);
-            sun.transform.SetParent(transform, false);
-
-            // Soft key spotlight over the farm diorama.
-            var spot = new GameObject("StageSpot").AddComponent<Light>();
-            spot.type = LightType.Spot;
-            spot.color = new Color(1f, 0.88f, 0.65f);
-            spot.intensity = 1.8f;
-            spot.range = 16f;
-            spot.spotAngle = 55f;
-            spot.transform.position = MapCenter + new Vector3(0.3f, 7f, -0.2f);
-            spot.transform.LookAt(MapCenter);
-            spot.transform.SetParent(transform, false);
+            RenderSettings.ambientLight = Color.white;
         }
 
         void BuildGroundPlate()
@@ -475,6 +455,8 @@ namespace Game.Farm
         public Vector3 MapCenter =>
             FarmIso.FieldWorldCenter(_world.Width, _world.Height, 0f)
             + new Vector3(0f, 0.2f, 0f);
+
+        public Transform PlayerTransform => _playerView == null ? null : _playerView.transform;
     }
 
     public class FarmBillboard : MonoBehaviour
