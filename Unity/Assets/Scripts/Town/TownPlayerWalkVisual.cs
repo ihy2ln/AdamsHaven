@@ -73,10 +73,24 @@ namespace Game.Town
             // left frame 0). Tracking the player's own position delta instead is
             // immune to whichever Move/SimpleMove quirk caused that.
             var pos = _cc.transform.position;
+            var delta = pos - _lastPos;
             var moving = _hasLastPos && Time.deltaTime > 0f
-                && (pos - _lastPos).magnitude / Time.deltaTime > MovingSpeedThreshold;
+                && delta.magnitude / Time.deltaTime > MovingSpeedThreshold;
             _lastPos = pos;
             _hasLastPos = true;
+
+            // Facing (M41). The walk frames are side-on art drawn facing LEFT, so
+            // left-ward movement uses them as-authored and right-ward mirrors them.
+            // Verified by inspecting the frames directly, not assumed -- mirroring
+            // front-facing art would have been a regression, which is why M40 left
+            // this out until the art could actually be checked.
+            if (moving && Mathf.Abs(delta.x) > 0.0001f)
+            {
+                var faceLeft = delta.x < 0f;
+                var s = transform.localScale;
+                var width = Mathf.Abs(s.x);
+                transform.localScale = new Vector3(faceLeft ? width : -width, s.y, s.z);
+            }
 
             if (!moving)
             {

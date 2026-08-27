@@ -1609,6 +1609,64 @@ actually land in `Resources/Battle` and be played.
       walking left -- deliberately not added, because the frames may be front-facing
       art, in which case mirroring is a regression rather than a fix.
 
+36. **Real prop art dressing the side-scroller, and a second transparency bug -- M41.**
+    The project owner supplied a set of prop art (tree, rocks, weeds, leafy plants,
+    cabbage, radish) plus a rolling-hills pixel backdrop, with direction to use them as
+    the foundation and treat the top-down -> side-scroller *code* as the important part.
+    - **The props were already in the repo, unkeyed.** Found as
+      `Resources/Farm/Art/sprite_{tree,rock,weed,cabbage,radishrow}_0000{1,2}_.png` --
+      exactly the pairs supplied, `_00001_` on white and `_00002_` on green screen, and
+      **none of them carrying any alpha**. Keyed to real transparency with Pillow
+      (ComfyUI's embedded Python, same tool M34's roof crops used), cropped to their
+      content bounding box, and written to `Resources/Town/Art/Props/` -- Town's own
+      folder rather than referencing Farm's, since Farm's art directory has churned
+      constantly and Town is meant to stay decoupled from it.
+      **Background chosen per asset, not uniformly**: rock uses the green-screen source
+      because its light-grey tops sit close enough to white that a white key ate them;
+      everything else uses the white source, since a saturated-green key would have
+      bitten into green foliage. Verified by compositing the results over magenta and
+      inspecting them rather than trusting the numbers.
+    - **Prop system** (`TownVisuals.Sprite`): a textured quad sized from the texture's
+      own aspect so nothing is squashed, standing on the ground by its base. Uses
+      `Sprites/Default` on purpose for two reasons -- it honours the PNG alpha, and it
+      has `Cull Off`, which sidesteps the perennial "which way does Unity's built-in
+      Quad face" ambiguity entirely instead of guessing at a 180-degree flip. Negative
+      X scale mirrors repeats so the same texture doesn't read as obvious copies.
+      Placement uses a **seeded `System.Random`**, not `UnityEngine.Random`: the street
+      should look identical every boot, and this can't disturb any other system's
+      random state.
+    - **Depth layers**, near camera to far: foreground dressing (-2.4), the player's
+      walking line (0), ground dressing (0.7-1.8), plots (2), mid trees (7), far trees
+      (12), backdrop (18). Far trees are large, tinted down and closely spaced so they
+      read as a treeline rather than individual trees; foreground pieces are kept short
+      on purpose, since tall ones would swallow the player walking behind them.
+    - **The rolling-hills backdrop is wired but not present.** That specific image
+      couldn't be located in the ComfyUI output tree, and per the project owner's
+      direction the hunt wasn't worth more time. `BuildBackdrop` loads
+      `Town/Art/town_backdrop_hills`, tiles it horizontally so the source keeps its
+      aspect, and **silently no-ops when absent** -- dropping that PNG in at that path
+      lights it up with no code change.
+    - **Second real transparency bug, found by checking rather than assuming.** The
+      M39 walk frames had **zero alpha** -- every pixel opaque, background a near-white
+      `(239,246,249)` -- despite M39's own note describing them as chroma-keyed. In the
+      old top-down view at tiny scale this went unnoticed; in a side-scroller the player
+      renders as a light box. Fixed with a **border flood-fill** rather than a colour
+      key: her silver armour sits ~32 RGB from that background, so a global key would
+      have eaten her highlights, while a fill seeded from the borders only removes
+      background-connected pixels. Soft-blurred the resulting alpha edge, and verified
+      over magenta. **If those frames get regenerated, the generator needs to bake alpha
+      or this regresses.**
+    - **M40's open question is settled**: the frames are side-on art **facing left**, so
+      mirroring is correct, and `TownPlayerWalkVisual` now flips on rightward movement.
+      M40 deliberately left this out until the art could actually be inspected --
+      mirroring front-facing art would have been a regression, not a fix.
+    - **Not staged**: `walk_08..15.png` show as deleted in git status -- the concurrent
+      work trimmed that set from 16 frames to 8 before any of this ran. Those deletions
+      are theirs to commit, and were left unstaged.
+    - **Still not play-tested.** The Editor stayed occupied by concurrent work
+      throughout (Battle/Android, then Farm/Android); driving it would have disrupted an
+      active build. Everything here is compile-verified and image-verified only.
+
 ## Roster
 
 | Unit | Role | Element | Faction | BA (free) | Skill Moves (mana, tap SM) | Ultimate (tap U, gauge-gated) |
@@ -1698,6 +1756,7 @@ costs the turn.
 | M38 | Real building rules: 4 sectors (Commercial/Housing/Industrial/Government), 10-building starting catalog, money+materials+time cost, Rush, a working Empty->UnderConstruction->Built loop | *(not yet tagged)* |
 | M39 | Walk-cycle player model tested live in the Editor; fixed a real animation bug (CharacterController.velocity not reflecting SimpleMove) found only by actually playing it | *(not yet tagged)* |
 | M40 | Town converted from top-down 2.5D to a flat side-scroller: fixed side-on camera, single movement axis, four districts relaid as one street. **Compile-verified, not yet played** | *(not yet tagged)* |
+| M41 | Prop art keyed to alpha and layered into the side-scroller (trees/rocks/weeds/crops); walk frames found to have no transparency at all and fixed; player now mirrors when walking right | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That

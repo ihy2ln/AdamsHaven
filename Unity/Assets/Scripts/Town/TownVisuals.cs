@@ -29,11 +29,22 @@ namespace Game.Town
         const float GroundDepth = 6f;      // Z extent -- enough for the player capsule to stand on.
         const float PlotZ = 2f;            // Plots sit behind the player's walking line (Z = 0).
         const float PlotDepth = 1.2f;
-        const float TreelineZ = 7f;
         const float PlotSpacing = 8f;      // > widest plot half-width pair, so nothing overlaps.
 
+        // Depth layers, near camera (-Z) to far (+Z): foreground dressing, the player's
+        // walking line at 0, ground dressing, plots, mid trees, far trees, backdrop.
+        const float ForegroundZ = -2.4f;
+        const float MidTreeZ = 7f;
+        const float FarTreeZ = 12f;
+        const float BackdropZ = 18f;
+
+        const string PropsResourceDir = "Town/Art/Props/";
+        /// <summary>Optional. Absent today -- `BuildBackdrop` falls back to the camera's
+        /// flat clear colour rather than failing, so dropping a side-view backdrop PNG
+        /// in at this path lights it up with no code change.</summary>
+        const string BackdropResourcePath = "Town/Art/town_backdrop_hills";
+
         static readonly Color GroundColor = new(0.55f, 0.45f, 0.32f);
-        static readonly Color TreeColor = new(0.16f, 0.30f, 0.18f);
         static readonly Color GateColor = new(0.85f, 0.75f, 0.25f);
         static readonly Color CommercialPlotColor = new(0.68f, 0.42f, 0.22f, 0.35f);
         static readonly Color HousingPlotColor = new(0.4f, 0.55f, 0.35f, 0.35f);
@@ -53,8 +64,10 @@ namespace Game.Town
             // rather than starting them intersecting it.
             var result = new BuildResult { PlayerSpawn = new Vector3(0f, 1.2f, 0f) };
 
+            BuildBackdrop(parent);
             BuildGround(parent);
             BuildTreeline(parent);
+            BuildGroundDressing(parent);
             BuildBounds(parent);
             BuildPlots(parent, result.Buildings);
 
@@ -74,19 +87,121 @@ namespace Game.Town
                 GroundColor);
         }
 
-        /// <summary>Flat backdrop so the camera isn't staring into empty clear-colour
-        /// behind the buildings. Deliberately crude -- placeholder set dressing until
-        /// real side-view art exists, same status as the plot ghosts.</summary>
+        /// <summary>Distant scenery quad, tiled horizontally so the source art keeps
+        /// its own aspect instead of being stretched across the whole street. Silently
+        /// does nothing when the texture is absent -- see `BackdropResourcePath`.</summary>
+        static void BuildBackdrop(Transform parent)
+        {
+            var tex = Resources.Load<Texture2D>(BackdropResourcePath);
+            if (tex == null) return;
+            tex.wrapMode = TextureWrapMode.Repeat; // tiling needs it regardless of import settings.
+
+            const float height = 34f;
+            var totalWidth = StreetHalfLength * 2f + 20f;
+            var tileWidth = height * tex.width / (float)tex.height;
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = "Backdrop";
+            StripCollider(go);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = new Vector3(0f, height / 2f - 6f, BackdropZ);
+            go.transform.localScale = new Vector3(totalWidth, height, 1f);
+
+            var shader = Shader.Find("Unlit/Texture") ?? Shader.Find("Sprites/Default");
+            var mat = new Material(shader) { mainTexture = tex };
+            mat.mainTextureScale = new Vector2(Mathf.Ceil(totalWidth / tileWidth), 1f);
+            go.GetComponent<Renderer>().material = mat;
+        }
+
+        /// <summary>Two depth layers of real tree art (M41). The far layer is large,
+        /// tinted down and closely spaced so it reads as a solid treeline rather than
+        /// individual trees; the mid layer is smaller, brighter and sparser. Placement
+        /// is seeded, not `UnityEngine.Random` -- the street should look identical
+        /// every boot, and this also avoids disturbing any other system's random
+        /// state.</summary>
         static void BuildTreeline(Transform parent)
         {
-            for (var x = -StreetHalfLength; x <= StreetHalfLength; x += 6f)
+            var tree = Prop("tree");
+            if (tree == null) return;
+            var rng = new System.Random(20260825);
+
+            for (var x = -StreetHalfLength; x <= StreetHalfLength; x += 9f)
+                Sprite(parent, "Tree_Far", tree,
+                    x + Jitter(rng, 2f), FarTreeZ, 14f + (float)rng.NextDouble() * 5f,
+                    new Color(0.42f, 0.5f, 0.44f), rng.Next(2) == 0);
+
+            for (var x = -StreetHalfLength + 5f; x <= StreetHalfLength; x += 17f)
+                Sprite(parent, "Tree_Mid", tree,
+                    x + Jitter(rng, 2.5f), MidTreeZ, 9f + (float)rng.NextDouble() * 3f,
+                    new Color(0.72f, 0.78f, 0.72f), rng.Next(2) == 0);
+        }
+
+        /// <summary>Weeds, rocks and stray crops along the street, plus a sparse
+        /// foreground layer nearer the camera than the player for a bit of depth.
+        /// Foreground pieces are kept short on purpose -- tall ones would swallow the
+        /// player as they walked behind them.</summary>
+        static void BuildGroundDressing(Transform parent)
+        {
+            var weed = Prop("weed");
+            var rock = Prop("rock");
+            var cabbage = Prop("cabbage");
+            var radish = Prop("radish");
+            var rng = new System.Random(70011);
+
+            for (var x = -StreetHalfLength + 3f; x <= StreetHalfLength - 3f; x += 4.5f)
             {
-                var height = 5f + 2f * Mathf.Abs(Mathf.Sin(x * 0.7f));
-                var tree = Primitive(PrimitiveType.Cube, parent, "BackdropTree",
-                    new Vector3(x, height / 2f, TreelineZ),
-                    new Vector3(4.5f, height, 1f), TreeColor);
-                StripCollider(tree);
+                // Leave the gate pads clear so nothing hides an exit.
+                if (Mathf.Abs(Mathf.Abs(x) - (StreetHalfLength - 4f)) < 3.5f) continue;
+
+                var roll = rng.Next(100);
+                var (tex, baseHeight, label) =
+                    roll < 45 ? (weed, 1.5f, "Weed")
+                    : roll < 70 ? (rock, 1.1f, "Rock")
+                    : roll < 85 ? (cabbage, 1.2f, "Cabbage")
+                    : (radish, 1.3f, "Radish");
+
+                Sprite(parent, label, tex,
+                    x + Jitter(rng, 1.2f),
+                    0.7f + (float)rng.NextDouble() * 1.1f,
+                    baseHeight * (0.8f + (float)rng.NextDouble() * 0.5f),
+                    Color.white, rng.Next(2) == 0);
             }
+
+            for (var x = -StreetHalfLength + 8f; x <= StreetHalfLength - 8f; x += 21f)
+                Sprite(parent, "Foreground", rng.Next(2) == 0 ? weed : rock,
+                    x + Jitter(rng, 2f), ForegroundZ, 1.6f,
+                    new Color(0.78f, 0.8f, 0.78f), rng.Next(2) == 0);
+        }
+
+        static float Jitter(System.Random rng, float amount) =>
+            (float)(rng.NextDouble() * 2.0 - 1.0) * amount;
+
+        static Texture2D Prop(string name) => Resources.Load<Texture2D>(PropsResourceDir + name);
+
+        /// <summary>A textured quad standing on the ground, sized from the texture's own
+        /// aspect so nothing is squashed. `Sprites/Default` is deliberate on two counts:
+        /// it honours the PNG's alpha, and it has `Cull Off` -- so the quad renders no
+        /// matter which way Unity's built-in Quad mesh happens to face, with no
+        /// 180-degree guesswork. Negative X scale mirrors a prop so repeats of the same
+        /// texture don't read as obvious copies.</summary>
+        static GameObject Sprite(Transform parent, string name, Texture2D tex,
+            float x, float z, float height, Color tint, bool flip = false)
+        {
+            if (tex == null) return null;
+
+            var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            go.name = name;
+            StripCollider(go); // scenery, never an obstacle.
+            go.transform.SetParent(parent, false);
+
+            var width = height * tex.width / (float)tex.height;
+            go.transform.localPosition = new Vector3(x, height / 2f, z);
+            go.transform.localScale = new Vector3(flip ? -width : width, height, 1f);
+
+            var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent");
+            go.GetComponent<Renderer>().material =
+                new Material(shader) { mainTexture = tex, color = tint };
+            return go;
         }
 
         /// <summary>Invisible walls capping each end of the street, so the player can't
