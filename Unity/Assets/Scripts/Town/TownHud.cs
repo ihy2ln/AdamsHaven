@@ -43,7 +43,7 @@ namespace Game.Town
 
             GUI.Box(new Rect(12, 12, 320, 76), GUIContent.none);
             GUI.Label(new Rect(24, 18, 300, 24), "ADAMS HAVEN  ·  TOWN", _title);
-            GUI.Label(new Rect(24, 44, 296, 20), "WASD/arrows to walk  ·  Q/R rotate view  ·  E gate/build  ·  TAB travel", _body);
+            GUI.Label(new Rect(24, 44, 296, 20), "A/D or ←/→ to walk  ·  E gate/build  ·  TAB travel", _body);
             GUI.Label(new Rect(24, 62, 296, 20), "Placeholder art -- see PROJECT-README's Town milestones", _body);
 
             var line = _controller.NearestGate != null ? _controller.NearestGate.PromptLine

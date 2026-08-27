@@ -2,26 +2,28 @@ using UnityEngine;
 
 namespace Game.Town
 {
-    /// <summary>Keeps the pitched ortho camera centred on the player as they walk the
-    /// hub -- Town is far larger than Farm's fixed-frame plot, so a static camera
-    /// (Farm/Battle's own convention) would leave most of it offscreen. `Yaw` is
-    /// player-adjustable (M34, `TownController`'s Q/R) rather than fixed -- the ground
-    /// reference image's own orientation doesn't necessarily match the camera's
-    /// original fixed facing, and letting the player rotate the view around sidesteps
-    /// having to guess the one "correct" fixed angle from outside the Editor.</summary>
+    /// <summary>Side-scroller camera (M40): fixed straight-on orientation looking down
+    /// +Z at the XY plane, tracking the player left/right along X only. Replaces
+    /// M34/M35's pitched, player-rotatable orbit rig -- pitch and yaw are both
+    /// meaningless in a flat side view, so `Q`/`R` rotation went away with them
+    /// (see TownController).
+    ///
+    /// Y is deliberately NOT followed: with no jumping, a camera that tracked vertical
+    /// movement would only ever jitter against the fixed ground line. `Height` frames
+    /// the street instead, so the horizon stays put while the player walks.</summary>
     public class TownCameraFollow : MonoBehaviour
     {
         public Transform Target;
-        public float Pitch = 55f;
-        public float Distance = 24f;
-        public float Yaw;
+        public float Distance = 20f;
+        public float Height = 3.5f;
 
         void LateUpdate()
         {
             if (Target == null) return;
-            var rot = Quaternion.Euler(Pitch, Yaw, 0f);
-            transform.rotation = rot;
-            transform.position = Target.position - rot * Vector3.forward * Distance;
+            // Identity rotation looks straight down +Z; sitting back on -Z puts the
+            // whole street in front of the camera.
+            transform.rotation = Quaternion.identity;
+            transform.position = new Vector3(Target.position.x, Height, -Distance);
         }
     }
 }

@@ -52,12 +52,10 @@ namespace Game.Town
             // collision; this is purely visual, same as the capsule it replaces.
             TownPlayerWalkVisual.Create(playerGo.transform, cc);
 
+            // M40: fixed side-on rig. M35's default yaw is gone along with the orbit
+            // controls it seeded -- a flat side view has exactly one camera angle.
             var camFollow = camGo.AddComponent<TownCameraFollow>();
             camFollow.Target = playerGo.transform;
-            // M35: default starting angle, matched to what the project owner settled on
-            // via Q/R during the M34 playtest -- still just a starting point, not a
-            // lock; Q/R keeps working from here same as always.
-            camFollow.Yaw = 45f;
 
             // M38: session-only economy + the build-choice/construction panel. Economy
             // is a plain class (no save yet -- see TownEconomy's own doc comment),
@@ -71,7 +69,7 @@ namespace Game.Town
             buildMenu.Init(economy);
 
             var ctrl = playerGo.AddComponent<TownController>();
-            ctrl.Init(built.Buildings, built.Gates, camFollow, buildMenu);
+            ctrl.Init(built.Buildings, built.Gates, buildMenu);
 
             var hudGo = new GameObject("TownHud");
             hudGo.transform.SetParent(transform, false);
@@ -81,12 +79,14 @@ namespace Game.Town
         }
 
         // Position/rotation are no longer set here -- TownCameraFollow (added after the
-        // player exists, see Boot() above) owns those every frame now that yaw is
-        // player-adjustable. This only sets the properties that don't change at runtime.
+        // player exists, see Boot() above) owns those every frame. This only sets the
+        // properties that don't change at runtime.
         static void ApplyCamera(Camera cam)
         {
             cam.orthographic = true;
-            cam.orthographicSize = 16f;
+            // M40: 8 (a 16-unit tall view) frames a street of <=7-unit buildings with
+            // sky above. M30's 16 was sized for looking down at a whole map at once.
+            cam.orthographicSize = 8f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.45f, 0.55f, 0.6f);
             cam.nearClipPlane = 0.05f;

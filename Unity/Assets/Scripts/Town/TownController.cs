@@ -4,33 +4,34 @@ using UnityEngine.SceneManagement;
 
 namespace Game.Town
 {
-    /// <summary>Free-walk movement for the Town hub (M30) -- deliberately not Farm's
-    /// grid/tile system (FarmWorld/FarmIso). Town has no per-tile simulation state, just
-    /// a walkable space with building lots in it, so plain continuous movement plus a
-    /// CharacterController for collision is the whole input model. Also owns the
-    /// proximity checks that drive TownHud's interaction prompt and Gates' scene
-    /// transitions.</summary>
+    /// <summary>Side-scrolling movement for the Town hub (M40) -- deliberately not
+    /// Farm's grid/tile system (FarmWorld/FarmIso). Town has no per-tile simulation
+    /// state, just a street with building lots along it, so plain left/right movement
+    /// plus a CharacterController for gravity/collision is the whole input model. Also
+    /// owns the proximity checks that drive TownHud's interaction prompt, the build
+    /// menu, and Gates' scene transitions.
+    ///
+    /// M30-M39's free XZ walking and Q/R camera rotation are both gone: a flat side
+    /// view has one movement axis and one fixed camera angle, so there's nothing left
+    /// for the second axis or the orbit controls to do.</summary>
     [RequireComponent(typeof(CharacterController))]
     public class TownController : MonoBehaviour
     {
         const float MoveSpeed = 6f;
         const float InteractRange = 3.5f;
-        const float CameraRotateSpeed = 90f; // degrees/sec while Q or R is held
 
         CharacterController _cc;
         List<TownBuilding> _buildings = new();
         List<TownGate> _gates = new();
-        TownCameraFollow _cameraFollow;
         TownBuildMenu _buildMenu;
 
         public TownBuilding NearestBuilding { get; private set; }
         public TownGate NearestGate { get; private set; }
 
-        public void Init(List<TownBuilding> buildings, List<TownGate> gates, TownCameraFollow cameraFollow, TownBuildMenu buildMenu)
+        public void Init(List<TownBuilding> buildings, List<TownGate> gates, TownBuildMenu buildMenu)
         {
             _buildings = buildings;
             _gates = gates;
-            _cameraFollow = cameraFollow;
             _buildMenu = buildMenu;
         }
 
@@ -41,28 +42,14 @@ namespace Game.Town
             if (Time.timeScale <= 0f) return;
             if (_buildMenu != null && _buildMenu.IsOpen) return;
 
-            if (_cameraFollow != null)
-            {
-                if (Input.GetKey(KeyCode.Q)) _cameraFollow.Yaw -= CameraRotateSpeed * Time.deltaTime;
-                if (Input.GetKey(KeyCode.R)) _cameraFollow.Yaw += CameraRotateSpeed * Time.deltaTime;
-            }
-
+            // Side-scroller (M40): one axis. Vertical input is ignored -- there's no
+            // depth to walk into anymore, and no jump yet. SimpleMove still applies
+            // gravity, which is what keeps the player on the street's ground collider.
             var h = Input.GetAxisRaw("Horizontal");
             if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow)) h = -1f;
             if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) h = 1f;
-            var v = Input.GetAxisRaw("Vertical");
-            if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) v = -1f;
-            if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow)) v = 1f;
 
-            var input = new Vector3(h, 0f, v);
-            if (input.sqrMagnitude > 1f) input.Normalize();
-
-            // Camera-relative (M34): W always means "away from camera" on screen, not a
-            // fixed world axis -- otherwise rotating the view with Q/R would leave
-            // movement pointing the wrong way on screen after the first turn.
-            var yaw = _cameraFollow != null ? _cameraFollow.Yaw : 0f;
-            var move = Quaternion.Euler(0f, yaw, 0f) * input;
-            _cc.SimpleMove(move * MoveSpeed);
+            _cc.SimpleMove(new Vector3(Mathf.Clamp(h, -1f, 1f), 0f, 0f) * MoveSpeed);
 
             UpdateNearest();
             // TownBuildMenu only ticks CompleteIfDue on the one plot its own panel is
@@ -86,13 +73,17 @@ namespace Game.Town
             NearestGate = Nearest(_gates, g => g.transform.position);
         }
 
+        /// <summary>Distance along the street only (M40). A plot's transform sits at
+        /// the centre of a building that stands several units tall and a couple of
+        /// units back in Z, so a full 3D distance would push tall buildings out of
+        /// interact range while the player is standing right at their base.</summary>
         T Nearest<T>(List<T> items, System.Func<T, Vector3> pos) where T : Component
         {
             T best = null;
             var bestDist = InteractRange;
             foreach (var item in items)
             {
-                var d = Vector3.Distance(transform.position, pos(item));
+                var d = Mathf.Abs(pos(item).x - transform.position.x);
                 if (d > bestDist) continue;
                 bestDist = d;
                 best = item;

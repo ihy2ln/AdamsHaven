@@ -7,14 +7,18 @@ namespace Game.Town
     /// flat capsule color. Frames came from AssetForge's own pipeline -- ComfyUI
     /// MiniMax H3 image-to-video from a reference photo, extracted and chroma-keyed
     /// via AssetForge's editor (POST /api/editor/{sid}/export) -- landing as
-    /// Resources/Town/Art/PlayerWalk/walk_00..15.png. Loaded as plain Texture2D via
-    /// Resources.LoadAll, the same runtime-texture approach TownVisuals.RoofCap
-    /// already uses, not Unity's Sprite importer (no .meta authoring needed for these
-    /// to just work).</summary>
+    /// Resources/Town/Art/PlayerWalk/walk_00..31.png (32-frame cycle). Loaded as plain
+    /// Texture2D via Resources.LoadAll, the same runtime-texture approach
+    /// TownVisuals.RoofCap already uses, not Unity's Sprite importer (no .meta
+    /// authoring needed for these to just work). Frame count is read from the loaded
+    /// array, not hardcoded, so this scales to any frame count dropped in the folder --
+    /// FramesPerSecond is the thing that needs to move with it, so total cycle time
+    /// (frames / fps) stays roughly constant instead of the walk slowing down every
+    /// time the frame count goes up.</summary>
     public class TownPlayerWalkVisual : MonoBehaviour
     {
         const string FramesResourceDir = "Town/Art/PlayerWalk";
-        const float FramesPerSecond = 8f;
+        const float FramesPerSecond = 16f;
         const float MovingSpeedThreshold = 0.1f; // units/sec
 
         Texture2D[] _frames;
@@ -100,7 +104,13 @@ namespace Game.Town
         void LateUpdate()
         {
             if (Camera.main == null) return;
-            transform.rotation = Quaternion.LookRotation(transform.position - Camera.main.transform.position);
+            var dir = transform.position - Camera.main.transform.position;
+            // Yaw only (M40). The side-scroller camera sits above the player, so a full
+            // LookRotation would pitch the quad to face it and the character would
+            // visibly lean back. Flattening Y keeps the sprite upright.
+            dir.y = 0f;
+            if (dir.sqrMagnitude < 0.0001f) return;
+            transform.rotation = Quaternion.LookRotation(dir);
         }
     }
 }

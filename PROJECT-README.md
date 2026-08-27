@@ -1557,6 +1557,57 @@ actually land in `Resources/Battle` and be played.
       the player walks, not just translating a static image.
     - Only `TownPlayerWalkVisual.cs` touched; the frames/material/billboard setup and
       everything else about that concurrent addition left exactly as found.
+35. **Town converted from top-down 2.5D to a flat side-scroller -- M40.** Project-owner
+    direction, a genuine architectural change rather than a tuning pass: camera,
+    movement axis, and world layout all had to move together.
+    - **Camera** (`TownCameraFollow`, rewritten): fixed identity rotation looking
+      straight down +Z at the XY plane, tracking the player along X only at a constant
+      `Height`. M34/M35's `Pitch`/`Yaw` orbit rig is gone -- both are meaningless in a
+      flat side view -- and with it the `Q`/`R` rotation controls and M35's 45-degree
+      default. Y deliberately isn't followed: with no jump, tracking it would only
+      jitter the horizon against a fixed ground line. `orthographicSize` 16 -> 8, since
+      8 frames a street of <=7-unit buildings instead of a whole map seen from above.
+    - **Movement** (`TownController`): one axis. Vertical input is ignored, and the
+      camera-relative rotation math from M34 went away with the yaw it depended on.
+      `SimpleMove` still applies gravity, which is now what holds the player on the
+      street's ground collider. Proximity checks became **X-distance only** -- a plot's
+      transform sits at the centre of a building several units tall and set back in Z,
+      so full 3D distance would have pushed tall buildings out of interact range while
+      standing at their base.
+    - **Layout** (`TownVisuals`, rewritten): the four districts stopped being four
+      quadrants around a crossroads and became four consecutive stretches of a single
+      street along X -- Commercial, Housing, Industrial, Government, left to right, with
+      a gate at each end (Farm left, dungeon right). Same 16 plots, same
+      `TownDistrict` tagging, same sizes: **only the arrangement changed, so M38's build
+      rules, catalog, and economy carry over completely untouched.** New: a street
+      ground strip (the one collider that matters, since gravity is live), invisible
+      bounds walls capping both ends, and a crude backdrop treeline so the camera isn't
+      staring into flat clear-colour.
+    - **Plots became standing translucent "ghosts"** of the building that will occupy
+      them, going solid once built -- the standard city-builder unbuilt-lot preview.
+      This needed no new state code: `TownBuilding.ApplyStateColor` already swapped
+      Empty/UnderConstruction/Built colours, and those colours already carried alpha;
+      they just needed a shader that honours it (`Sprites/Default`) instead of Standard.
+    - **The M37 ground image can't come back as-is, and that's not a regression to
+      fix.** `town_ground_empty_01.png` is a *top-down painting* of a clearing -- there
+      is no way to read it as ground from a side-on camera. The street is flat colour
+      for now; the asset stays on disk untouched, for whenever side-view backdrop art
+      exists or a top-down map screen wants it. Same status the M34 roof crops have had
+      since M36.
+    - **Billboard fixed while here**: `TownBillboard` did a full `LookRotation` at the
+      camera, which in a side view (camera sits above the player) would pitch the quad
+      and make the character visibly lean back. Flattened to yaw-only.
+    - **Compile-verified, NOT play-tested.** `Tools/unity.sh typecheck` is clean, but
+      the Editor was taken over mid-change by concurrent work -- a fresh session
+      launched on the Battle scene with the **Android** build target, still inside
+      `InitializeOnLoad` when checked. Driving that session (switching scenes, entering
+      Play) risked disrupting an Android build in progress, so it was left alone.
+      **Everything here still needs a real play pass**: that the player lands on the
+      street instead of falling, that walking left/right reads correctly, that the
+      camera framing works, and that build prompts still trigger at the new plot
+      positions. Worth watching specifically: whether the walk sprite should mirror when
+      walking left -- deliberately not added, because the frames may be front-facing
+      art, in which case mirroring is a regression rather than a fix.
 
 ## Roster
 
@@ -1646,6 +1697,7 @@ costs the turn.
 | M37 | Ground image swapped for a genuinely empty crossroads-through-forest reference (no buildings painted in), matching M36's direction | *(not yet tagged)* |
 | M38 | Real building rules: 4 sectors (Commercial/Housing/Industrial/Government), 10-building starting catalog, money+materials+time cost, Rush, a working Empty->UnderConstruction->Built loop | *(not yet tagged)* |
 | M39 | Walk-cycle player model tested live in the Editor; fixed a real animation bug (CharacterController.velocity not reflecting SimpleMove) found only by actually playing it | *(not yet tagged)* |
+| M40 | Town converted from top-down 2.5D to a flat side-scroller: fixed side-on camera, single movement axis, four districts relaid as one street. **Compile-verified, not yet played** | *(not yet tagged)* |
 
 Each of M0-M2's commits has a `NOTES.md` snapshot under
 `AI.Game Commits/battle-slice/<milestone>/` and a zip under `releases/zips/`. That

@@ -3,32 +3,37 @@ using UnityEngine;
 
 namespace Game.Town
 {
-    /// <summary>Builds the Town plot at runtime. The project owner's reference image
-    /// paints the ground directly (`Resources/Town/Art/town_ground_empty_01.png`,
-    /// loaded at runtime) -- dirt roads in a cross pattern through forest, genuinely
-    /// empty this time (M37; the original `town_reference_01.png` still had M30/M31's
-    /// buildings painted in, which never matched the "starts empty" direction -- kept
-    /// on disk, unused, in case a with-buildings reference is wanted again later).
-    /// Matches §5.5: buildings
-    /// cost materials and a real-time build countdown, so the town legitimately starts
-    /// with nothing actually built, rather than a hardcoded blockout standing in for
-    /// real construction. M36 adds back what M30/M31's removed building blockout was
-    /// really marking: not buildings, but the *plots of land* they'll eventually occupy
-    /// -- flat, walkable, collider-free markers (`TownBuilding`, reused rather than
-    /// renamed -- see its own doc comment) at the same four-district layout as before.
-    /// M38 gives those markers a real state machine and a build-choice menu -- see
-    /// `TownBuildingDefinition`, `TownEconomy`, `TownBuildMenu`.</summary>
+    /// <summary>Builds the Town street at runtime (M40) -- a flat side-scroller,
+    /// replacing M30-M39's top-down 2.5D crossroads.
+    ///
+    /// The old layout put four districts in four quadrants around a crossroads on the
+    /// XZ plane, viewed through a pitched camera. A flat side view has one walkable
+    /// axis, so the districts became four consecutive stretches of a single street
+    /// running along X: Commercial, then Housing, then Industrial, then Government,
+    /// with a gate at each end (Farm on the left, the dungeon on the right).
+    ///
+    /// **The reference-image ground is gone, and can't come back as-is.**
+    /// `town_ground_empty_01.png` (M37) is a top-down painting of a clearing -- there
+    /// is no way to read it as ground from a side-on camera, so the street is flat
+    /// colour for now with a simple treeline behind it. The asset stays on disk,
+    /// untouched, for whenever a side-view backdrop exists to replace it (or if a
+    /// top-down map screen ever wants it). See PROJECT-README's M40 entry.
+    ///
+    /// Plots render as translucent standing "ghosts" of the building that will occupy
+    /// them, going solid once built (`TownBuilding.ApplyStateColor`) -- the same
+    /// city-builder convention where an unbuilt lot shows a preview outline.</summary>
     public static class TownVisuals
     {
-        const string ReferenceImageResourcePath = "Town/Art/town_ground_empty_01";
-        const float RoadHalfWidth = 2.5f;
-        const float RoadReach = 42f;
-        const float ForestRadius = 46f;
+        // Street runs from -StreetHalfLength to +StreetHalfLength along X.
+        const float StreetHalfLength = 70f;
+        const float GroundDepth = 6f;      // Z extent -- enough for the player capsule to stand on.
+        const float PlotZ = 2f;            // Plots sit behind the player's walking line (Z = 0).
+        const float PlotDepth = 1.2f;
+        const float TreelineZ = 7f;
+        const float PlotSpacing = 8f;      // > widest plot half-width pair, so nothing overlaps.
 
-        static readonly Color RoadColor = new(0.42f, 0.38f, 0.32f);
-        static readonly Color GroundColor = new(0.29f, 0.42f, 0.24f);
-        static readonly Color TrunkColor = new(0.3f, 0.22f, 0.14f);
-        static readonly Color LeafColor = new(0.16f, 0.32f, 0.16f);
+        static readonly Color GroundColor = new(0.55f, 0.45f, 0.32f);
+        static readonly Color TreeColor = new(0.16f, 0.30f, 0.18f);
         static readonly Color GateColor = new(0.85f, 0.75f, 0.25f);
         static readonly Color CommercialPlotColor = new(0.68f, 0.42f, 0.22f, 0.35f);
         static readonly Color HousingPlotColor = new(0.4f, 0.55f, 0.35f, 0.35f);
@@ -44,75 +49,96 @@ namespace Game.Town
 
         public static BuildResult Build(Transform parent)
         {
-            var result = new BuildResult { PlayerSpawn = new Vector3(0f, 0.5f, -5f) };
+            // Slightly above the ground surface so gravity settles the player onto it
+            // rather than starting them intersecting it.
+            var result = new BuildResult { PlayerSpawn = new Vector3(0f, 1.2f, 0f) };
 
-            BuildGroundImage(parent);
-
-            BuildRoads(parent);
-            BuildForestRing(parent);
-
+            BuildGround(parent);
+            BuildTreeline(parent);
+            BuildBounds(parent);
             BuildPlots(parent, result.Buildings);
 
-            BuildGate(parent, result.Gates, "Path to the Farm", "Farm", new Vector3(-ForestRadius + 4f, 0f, -ForestRadius + 4f));
-            BuildGate(parent, result.Gates, "Path to the Dungeon", "Battle", new Vector3(ForestRadius - 4f, 0f, -ForestRadius + 4f));
+            BuildGate(parent, result.Gates, "Path to the Farm", "Farm", -StreetHalfLength + 4f);
+            BuildGate(parent, result.Gates, "Path to the Dungeon", "Battle", StreetHalfLength - 4f);
 
             return result;
         }
 
-        /// <summary>M38: the same 15 plots M36 laid out, now tagged by `TownDistrict`
-        /// sector rather than one fixed pre-named building each -- what actually gets
-        /// built on a plot is chosen from `TownBuildingCatalog.ForDistrict` at build
-        /// time (`TownBuildMenu`), not baked in here.</summary>
-        static void BuildPlots(Transform parent, List<TownBuilding> buildings)
+        /// <summary>The street itself -- the one collider the player actually stands
+        /// on, since SimpleMove applies gravity every frame.</summary>
+        static void BuildGround(Transform parent)
         {
-            var marketStart = new Vector3(-14f, 0f, 14f);
-            for (var i = 0; i < 5; i++)
-            {
-                var pos = marketStart + new Vector3(-i * 6.5f, 0f, 0f);
-                buildings.Add(Plot(parent, pos, new Vector2(5f, 5f), CommercialPlotColor, TownDistrict.Commercial, $"Commercial Plot {i + 1}"));
-            }
-
-            var residentialOrigin = new Vector3(14f, 0f, 30f);
-            for (var i = 0; i < 6; i++)
-            {
-                var col = i % 2;
-                var row = i / 2;
-                var pos = residentialOrigin + new Vector3(col * 11f, 0f, -row * 11f);
-                buildings.Add(Plot(parent, pos, new Vector2(4.5f, 4.5f), HousingPlotColor, TownDistrict.Housing, $"Housing Plot {i + 1}"));
-            }
-
-            var utilityOrigin = new Vector3(-14f, 0f, -14f);
-            for (var i = 0; i < 3; i++)
-            {
-                var pos = utilityOrigin + new Vector3(-i * 8f, 0f, -(i % 2) * 6f);
-                buildings.Add(Plot(parent, pos, new Vector2(6f, 6f), IndustrialPlotColor, TownDistrict.Industrial, $"Industrial Plot {i + 1}"));
-            }
-            var towerPos = utilityOrigin + new Vector3(6f, 0f, -10f);
-            buildings.Add(Plot(parent, towerPos, new Vector2(3f, 3f), IndustrialPlotColor, TownDistrict.Industrial, "Industrial Plot 4"));
-
-            var hallPos = new Vector3(16f, 0f, -14f);
-            buildings.Add(Plot(parent, hallPos, new Vector2(9f, 7f), GovernmentPlotColor, TownDistrict.Government, "Government Plot 1"));
+            Primitive(PrimitiveType.Cube, parent, "Street",
+                new Vector3(0f, -0.5f, 0f),
+                new Vector3(StreetHalfLength * 2f + 6f, 1f, GroundDepth),
+                GroundColor);
         }
 
-        /// <summary>A flat, walkable, translucent rectangle marking an empty buildable
-        /// lot -- collider stripped on purpose (the point of a plot is you can stand on
-        /// it while nothing's built there), positioned just above the ground image so it
-        /// doesn't z-fight with it.</summary>
-        static TownBuilding Plot(Transform parent, Vector3 pos, Vector2 footprint, Color color, TownDistrict district, string displayName)
+        /// <summary>Flat backdrop so the camera isn't staring into empty clear-colour
+        /// behind the buildings. Deliberately crude -- placeholder set dressing until
+        /// real side-view art exists, same status as the plot ghosts.</summary>
+        static void BuildTreeline(Transform parent)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            go.name = displayName;
-            Object.DestroyImmediate(go.GetComponent<Collider>()); // plots are walkable, not obstacles.
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = pos + Vector3.up * 0.03f;
-            go.transform.localScale = new Vector3(footprint.x / 10f, 1f, footprint.y / 10f);
-
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
+            for (var x = -StreetHalfLength; x <= StreetHalfLength; x += 6f)
             {
-                var shader = Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Transparent");
-                renderer.material = new Material(shader) { color = color };
+                var height = 5f + 2f * Mathf.Abs(Mathf.Sin(x * 0.7f));
+                var tree = Primitive(PrimitiveType.Cube, parent, "BackdropTree",
+                    new Vector3(x, height / 2f, TreelineZ),
+                    new Vector3(4.5f, height, 1f), TreeColor);
+                StripCollider(tree);
             }
+        }
+
+        /// <summary>Invisible walls capping each end of the street, so the player can't
+        /// walk off into nothing. Keeps its collider -- unlike everything else here,
+        /// blocking is the entire point.</summary>
+        static void BuildBounds(Transform parent)
+        {
+            foreach (var side in new[] { -1f, 1f })
+            {
+                Primitive(PrimitiveType.Cube, parent, "StreetBound",
+                    new Vector3(side * (StreetHalfLength + 1f), 3f, 0f),
+                    new Vector3(1f, 8f, GroundDepth), Color.white, visible: false);
+            }
+        }
+
+        /// <summary>The four districts, laid out left-to-right as consecutive stretches
+        /// of the street. Same counts and same `TownDistrict` tagging M36-M38 used --
+        /// only the arrangement changed, so the build rules, catalog, and economy carry
+        /// over untouched.</summary>
+        static void BuildPlots(Transform parent, List<TownBuilding> buildings)
+        {
+            var slot = 0;
+            const int total = 16; // 5 commercial + 6 housing + 4 industrial + 1 government
+            float NextX() => -((total - 1) * PlotSpacing / 2f) + (slot++ * PlotSpacing);
+
+            for (var i = 0; i < 5; i++)
+                buildings.Add(Plot(parent, NextX(), new Vector2(5f, 5f),
+                    CommercialPlotColor, TownDistrict.Commercial, $"Commercial Plot {i + 1}"));
+
+            for (var i = 0; i < 6; i++)
+                buildings.Add(Plot(parent, NextX(), new Vector2(4.5f, 4f),
+                    HousingPlotColor, TownDistrict.Housing, $"Housing Plot {i + 1}"));
+
+            for (var i = 0; i < 4; i++)
+                buildings.Add(Plot(parent, NextX(), new Vector2(6f, 5.5f),
+                    IndustrialPlotColor, TownDistrict.Industrial, $"Industrial Plot {i + 1}"));
+
+            buildings.Add(Plot(parent, NextX(), new Vector2(9f, 7f),
+                GovernmentPlotColor, TownDistrict.Government, "Government Plot 1"));
+        }
+
+        /// <summary>A standing, translucent box marking a buildable lot -- collider
+        /// stripped on purpose (plots are things you walk past and interact with, not
+        /// obstacles), and set back at `PlotZ` so the player always draws in front of
+        /// them.</summary>
+        static TownBuilding Plot(Transform parent, float x, Vector2 size, Color color,
+            TownDistrict district, string displayName)
+        {
+            var go = Primitive(PrimitiveType.Cube, parent, displayName,
+                new Vector3(x, size.y / 2f, PlotZ),
+                new Vector3(size.x, size.y, PlotDepth), color, transparent: true);
+            StripCollider(go);
 
             var tb = go.AddComponent<TownBuilding>();
             tb.District = district;
@@ -121,77 +147,31 @@ namespace Game.Town
             return tb;
         }
 
-        static void BuildGroundImage(Transform parent)
+        static void BuildGate(Transform parent, List<TownGate> gates, string displayName,
+            string targetScene, float x)
         {
-            var go = GameObject.CreatePrimitive(PrimitiveType.Plane);
-            go.name = "Ground_ReferenceImage";
-            go.transform.SetParent(parent, false);
-            go.transform.localPosition = Vector3.zero;
-            // Default Plane mesh is 10x10 units; stretched to a square covering the
-            // same footprint the building layout and forest ring already use. Slight
-            // distortion from the source image's own portrait aspect is an accepted
-            // tradeoff -- see the class doc comment.
-            go.transform.localScale = new Vector3(ForestRadius / 5f, 1f, ForestRadius / 5f);
+            var post = Primitive(PrimitiveType.Cube, parent, "Gate_" + targetScene,
+                new Vector3(x, 2f, 0.8f), new Vector3(1.5f, 4f, 0.4f), GateColor);
+            StripCollider(post); // proximity-triggered, not a physical barrier.
 
-            var texture = Resources.Load<Texture2D>(ReferenceImageResourcePath);
-            var renderer = go.GetComponent<Renderer>();
-            if (renderer != null)
-            {
-                var shader = Shader.Find("Unlit/Texture") ?? Shader.Find("Standard");
-                var mat = new Material(shader);
-                if (texture != null) mat.mainTexture = texture;
-                else mat.color = GroundColor; // Resources.Load miss -- fall back rather than render blank/pink.
-                renderer.material = mat;
-            }
-        }
-
-        static void BuildRoads(Transform parent)
-        {
-            Primitive(PrimitiveType.Cube, parent, "Road_NS",
-                Vector3.zero, new Vector3(RoadHalfWidth * 2f, 0.05f, RoadReach * 2f), RoadColor, visible: false);
-            Primitive(PrimitiveType.Cube, parent, "Road_EW",
-                Vector3.zero, new Vector3(RoadReach * 2f, 0.05f, RoadHalfWidth * 2f), RoadColor, visible: false);
-        }
-
-        static void BuildForestRing(Transform parent)
-        {
-            const int count = 40;
-            for (var i = 0; i < count; i++)
-            {
-                var angle = i * (360f / count) * Mathf.Deg2Rad;
-                var jitter = 4f * Mathf.Sin(i * 12.9f);
-                var radius = ForestRadius + jitter;
-                var pos = new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
-                Tree(parent, pos);
-            }
-        }
-
-        static void Tree(Transform parent, Vector3 pos)
-        {
-            var trunk = Primitive(PrimitiveType.Cylinder, parent, "Tree_Trunk",
-                pos + Vector3.up * 0.75f, new Vector3(0.5f, 0.75f, 0.5f), TrunkColor, visible: false);
-            var leaves = Primitive(PrimitiveType.Sphere, parent, "Tree_Leaves",
-                pos + Vector3.up * 2.2f, new Vector3(2.2f, 2.2f, 2.2f), LeafColor, visible: false);
-            leaves.transform.SetParent(trunk.transform, true);
-        }
-
-        static void BuildGate(Transform parent, List<TownGate> gates, string displayName, string targetScene, Vector3 pos)
-        {
-            var pad = Primitive(PrimitiveType.Cylinder, parent, "Gate_" + targetScene,
-                pos + Vector3.up * 0.05f, new Vector3(2.4f, 0.05f, 2.4f), GateColor);
-            var gate = pad.AddComponent<TownGate>();
+            var gate = post.AddComponent<TownGate>();
             gate.DisplayName = displayName;
             gate.TargetSceneName = targetScene;
             gates.Add(gate);
         }
 
-        /// <summary>`visible: false` (M33) keeps the collider -- walking still blocks on
-        /// this shape -- but switches the renderer off, since the reference-image ground
-        /// (`BuildGroundImage`) now shows this building/tree/road/plaza already painted
-        /// in. Gates stay visible (default true): they're a Town-only affordance, not
-        /// part of the original artwork, so they need to read as real objects.</summary>
+        static void StripCollider(GameObject go)
+        {
+            var collider = go.GetComponent<Collider>();
+            if (collider != null) Object.DestroyImmediate(collider);
+        }
+
+        /// <summary>`visible: false` keeps the collider but switches the renderer off
+        /// (the street bounds). `transparent: true` picks a shader that actually
+        /// honours the colour's alpha, which the plot ghosts need and Standard
+        /// wouldn't give them without extra render-mode setup.</summary>
         static GameObject Primitive(PrimitiveType type, Transform parent, string name,
-            Vector3 localPos, Vector3 scale, Color color, bool visible = true)
+            Vector3 localPos, Vector3 scale, Color color, bool visible = true, bool transparent = false)
         {
             var go = GameObject.CreatePrimitive(type);
             go.name = name;
@@ -208,9 +188,10 @@ namespace Game.Town
                 }
                 else
                 {
-                    var shader = Shader.Find("Standard") ?? Shader.Find("Unlit/Color");
+                    var shader = transparent
+                        ? Shader.Find("Sprites/Default") ?? Shader.Find("Unlit/Color")
+                        : Shader.Find("Unlit/Color") ?? Shader.Find("Standard");
                     var mat = new Material(shader) { color = color };
-                    if (mat.HasProperty("_Glossiness")) mat.SetFloat("_Glossiness", 0.05f);
                     renderer.material = mat;
                 }
             }
